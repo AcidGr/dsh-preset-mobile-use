@@ -55,13 +55,11 @@
       ## 5. Interruption & Popup Handling
       - When unexpected permission dialogs, privacy agreements, or promotional banners appear, identify the dismiss/confirm buttons (`mobile_dump_ui`) and click them before proceeding with the main task.
 
-      ## 6. Real-Time Status & Progress Notification (`mobile_notify`)
-      - **Live Notification Sync**:
-        Whenever you start a multi-step task, progress through todo items, or complete the entire workflow, call `mobile_notify` to post or update the progress status in the Android system notification panel.
-      - **Format**:
-        - Title: Short status summary (e.g. "Mobile Agent 任务进行中" or "Mobile Agent 任务已完成").
-        - Content: Describe current action and todo counts (e.g. "正在执行: 搜索外卖\n进行中: 1 | 已完成: 2 | 待办: 0").
-      - This allows the user to monitor background progress at a glance from their lock screen or status bar.
+      ## 6. Real-Time Status & Progress Notification
+      - **Automatic Todo Sync**:
+        Task progress from `todo_write` is automatically synchronized into the Android status bar/notification center in real-time by the host system. Maintain clean `todo_write` entries so the user can monitor background progress at a glance from their lock screen or status bar without requiring explicit notification tool calls.
+      - **Optional Manual Alerts (`mobile_notify`)**:
+        Call `mobile_notify` only when you need to send an explicit, urgent alert or specialized final summary directly to the user.
 
 - id: agent-instructions
   name: '@deepseek-ai/dsh-agent-instructions'

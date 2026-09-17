@@ -397,6 +397,33 @@ export function apply(ctx) {
 			return res;
 		},
 	}));
+
+	// Auto status notification: sync todo_write progress silently to Android status bar
+	ctx.on("tools/result", async (_scope, exec, _result) => {
+		try {
+			if (exec?.name === "todo_write") {
+				const todos = exec.args?.todos || [];
+				if (!Array.isArray(todos) || todos.length === 0) return;
+
+				const total = todos.length;
+				const completed = todos.filter((t) => t.status === "completed").length;
+				const inProgress = todos.find((t) => t.status === "in_progress");
+
+				const title = `Mobile Agent 进度: ${completed}/${total}`;
+				const content = inProgress
+					? `正在执行: ${inProgress.content}`
+					: (completed === total ? "所有任务已全部执行完毕" : "等待下一步调度");
+
+				await postJson("/api/notify", {
+					title,
+					content,
+					tag: "dsh_agent",
+				});
+			}
+		} catch (_) {
+			// Silent catch to prevent side effects on main agent loop
+		}
+	});
 }
 
 export default { apply, inject, name };
