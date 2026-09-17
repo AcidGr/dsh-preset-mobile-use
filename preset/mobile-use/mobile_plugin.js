@@ -355,49 +355,6 @@ export function apply(ctx) {
 		},
 	}));
 
-	// 10. mobile_notify
-	ctx.tools.register(defineTool({
-		name: "mobile_notify",
-		description: "Post or update a system notification in the Android status bar/notification panel to display the current task progress, todo list status, or completion alert. Overwrites previous notification in place with the same tag.",
-		parameters: {
-			title: {
-				type: "string",
-				description: "Notification title (e.g. 'Mobile Agent 任务进行中' or 'Mobile Agent 任务已完成')",
-			},
-			content: {
-				type: "string",
-				required: true,
-				description: "Detailed progress or status summary (e.g. '正在执行: 搜索外卖\\n进行中: 1 | 已完成: 2 | 待办: 0')",
-			},
-			tag: {
-				type: "string",
-				description: "Optional tag identifier for the notification (defaults to 'dsh_agent')",
-			},
-		},
-		output: {
-			schema: {
-				type: "object",
-				additionalProperties: true,
-				properties: {
-					message: { type: "string" },
-					success: { type: "boolean" },
-				},
-			},
-			render: (_args, val) => [{
-				type: "text",
-				text: val.success ? `Notification posted: ${val.message || "OK"}` : `Notification error: ${val.message}`,
-			}],
-		},
-		async execute(args) {
-			const res = await postJson("/api/notify", {
-				title: args.title || "Mobile Agent 任务状态",
-				content: args.content,
-				tag: args.tag || "dsh_agent",
-			});
-			return res;
-		},
-	}));
-
 	// Auto status notification: sync todo_write progress silently to Android status bar
 	ctx.on("tools/result", async (_scope, exec, _result) => {
 		try {

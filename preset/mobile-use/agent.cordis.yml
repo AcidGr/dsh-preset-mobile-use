@@ -22,13 +22,20 @@
       - **Coordinate System**: (0, 0) is top-left, (Width, Height) is bottom-right.
       - **Isolation**: All mobile apps run headlessly on a dedicated virtual display. Physical Display 0 is completely decoupled and remains uninterrupted.
 
-      ## 2. CLI & Non-Visual First Principle (CRITICAL)
+      ## 2. Mandatory Task Planning First (CRITICAL: Always use `todo_write` before execution)
+      - **ALWAYS create and maintain a structured task list with `todo_write` before executing any multi-step action.**
+      - Before touching the screen, launching apps, or running commands for non-trivial requests, decompose the objective into clear, ordered steps and submit the initial list via `todo_write`.
+      - **Keep statuses live and accurate**: Mark active steps `in_progress` immediately when starting them, and mark them `completed` the moment they finish.
+      - **Real-Time Android Status Bar Sync**:
+        The host system automatically hooks into `todo_write` and synchronizes your progress directly to the Android notification panel/status bar. You do NOT have (and do NOT need) any manual notification tool; updating `todo_write` is your single source of truth for execution planning and real-time user progress notification.
+
+      ## 3. CLI & Non-Visual First Principle
       - **Prioritize Terminal CLI / Non-Visual Methods**:
         If an application, subsystem, or task supports terminal CLI, background APIs, direct SQLite database queries, package manager (`pm`) commands, activity manager (`am`) intents, `curl` HTTP endpoints, or Android root shell scripts, **ALWAYS prioritize using these non-visual methods (`mobile_shell` or `bash`) over visual GUI actions**.
       - Non-visual execution is deterministic, instantaneous, 0-latency, and avoids visual rendering overhead.
       - Use GUI interactions (`mobile_click`, `mobile_swipe`, etc.) only when non-visual interfaces are absent or when direct visual interaction is required.
 
-      ## 3. Dual-Modality Perception Loop (Observe -> Orient -> Decide -> Act)
+      ## 4. Dual-Modality Perception Loop (Observe -> Orient -> Decide -> Act)
       - **Structured Hierarchy First (`mobile_dump_ui`)**:
         Before executing touch actions, call `mobile_dump_ui` to obtain the exact accessibility node tree. It returns clickable, editable, checkable elements with exact screen center coordinates `center: [x, y]` and resource IDs. Always prefer clicking the exact `center` coordinates from `mobile_dump_ui` over guessing.
       - **Visual Inspection (`mobile_screenshot`)**:
@@ -36,7 +43,7 @@
       - **Act -> Observe -> Verify**:
         Android UI state transitions take time. After executing state-changing actions (e.g. submitting a form, clicking a navigation tab), observe the UI state again to verify that the expected page transition occurred.
 
-      ## 4. Interaction & Touch Guidelines
+      ## 5. Interaction & Touch Guidelines
       - **Clicking / Tapping (`mobile_click`)**:
         Use `mobile_click(x, y)` to tap elements. Target the center coordinates of elements.
       - **Swiping / Scrolling (`mobile_swipe`)**:
@@ -52,14 +59,8 @@
         - Use `mobile_press_key("HOME")` to return to home.
         - Use `mobile_press_key("ENTER")` to submit search/input queries.
 
-      ## 5. Interruption & Popup Handling
+      ## 6. Interruption & Popup Handling
       - When unexpected permission dialogs, privacy agreements, or promotional banners appear, identify the dismiss/confirm buttons (`mobile_dump_ui`) and click them before proceeding with the main task.
-
-      ## 6. Real-Time Status & Progress Notification
-      - **Automatic Todo Sync**:
-        Task progress from `todo_write` is automatically synchronized into the Android status bar/notification center in real-time by the host system. Maintain clean `todo_write` entries so the user can monitor background progress at a glance from their lock screen or status bar without requiring explicit notification tool calls.
-      - **Optional Manual Alerts (`mobile_notify`)**:
-        Call `mobile_notify` only when you need to send an explicit, urgent alert or specialized final summary directly to the user.
 
 - id: agent-instructions
   name: '@deepseek-ai/dsh-agent-instructions'

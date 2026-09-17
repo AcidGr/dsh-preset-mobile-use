@@ -70,7 +70,8 @@ Agent 自动在后台独立副屏中拉起系统便签、选择系统画笔、�
 | `mobile_press_key` | 向副屏发送物理按键（BACK, HOME, ENTER 等） |
 | `mobile_launch_app` | 在副屏定向拉起目标应用或 Activity |
 | `mobile_shell` | 在手机宿主环境中执行特权 Shell 命令 |
-| `mobile_notify` | 向主屏发送通知栏提示或气泡提醒 |
+
+> **提示（零开销自动通知）**：本预设无需模型手动调用通知工具。宿主系统已自动监听 `todo_write` 的待办状态，任何任务进展都会在后台静默实时同步更新至 Android 系统状态栏与通知中心。
 
 ---
 
