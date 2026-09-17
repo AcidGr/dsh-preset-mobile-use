@@ -1,0 +1,3 @@
+name: Mobile Use 模式
+description: 专为 Android 移动端及底层虚拟副屏打造的自主控制 Agent。具备物理屏幕自适应规格、双模视觉与无障碍感知、静默触控输入与 CLI / 非视觉优先的快速执行能力。
+order: 2
