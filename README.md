@@ -9,7 +9,21 @@
 
 `dsh-preset-mobile-use` 是专为 **DeepSeek Harness (DSH)** 深度定制的移动端自动化 Agent 预设（Preset）。
 
-该预设使 DSH 具备原生的 **Android Mobile Use** 自主行动能力，直接通过大语言模型自主规划、视觉推理与无障碍树感知，在后台静默完成 Android 系统的各项自动化任务。
+该预设使 DSH 具备原生的 **Android Mobile Use** 自主行动能力，直接通过大语言模型自主规划、视觉推理与精细物理交互，在后台静默完成 Android 系统的各项高阶自动化任务。
+
+---
+
+### 实测实录：纯手绘作画实机效果展示（含金量极高）
+
+以下为真实任务记录：用户仅在 DSH 提出一条自然语言指令 **“去我的便签里面，用绘制的方式（用系统的笔）随便画一幅画吧！要手绘噢！”**。
+
+Agent 自动在后台独立副屏中拉起系统便签、选择系统画笔、经过 105 步高精度触控笔触自主规划与滑动绘制，**一手一手、一笔一划** 纯手绘完成了整幅细腻的《手绘田园风景画》（远山、房屋烟囱、大树、小花、太阳与小路）：
+
+| DSH 交互与执行全流程 (1 轮 105 步) | Agent 纯手绘作画最终成品 (系统便签内) |
+| :---: | :---: |
+| <img src="docs/images/dsh_drawing_task.jpg" width="340" alt="DSH Task Execution" /> | <img src="docs/images/drawn_landscape.jpg" width="340" alt="Drawn Landscape Result" /> |
+
+整个创作过程完全在后台虚拟副屏静默完成，手机物理主屏完全不抢占前台、不打扰用户日常使用！
 
 ---
 
@@ -30,6 +44,8 @@
 
 - **完全后台静默 (Headless Execution)**：
   自动化应用在系统内存中的独立虚拟副屏（Display > 0）上渲染与操作，手机物理主屏不跳前台、不抢焦点、可以正常日常使用或息屏。
+- **超高精度物理手势调度**：
+  支持精细毫秒级滑动、贝塞尔拟合触控（`mobile_swipe` / `mobile_click`），不仅能点按 UI 控件，甚至能实现像素级的连续自主手绘与拖拽。
 - **双模感知 (Dual Perception)**：
   提供结构化无障碍树解析（`mobile_dump_ui`）与实时副屏高分辨率快照（`mobile_screenshot`）。
 - **智能滑动窗口图像上下文压缩 (Sliding-Window Image Offload)**：
@@ -49,7 +65,7 @@
 | `mobile_screenshot` | 截取副屏高精度 PNG 图像并自动执行滑动窗口上下文压缩 |
 | `mobile_dump_ui` | 获取当前副屏结构化控件树与可点击节点中心绝对坐标 |
 | `mobile_click` | 向指定 `(x, y)` 发送物理触控点击事件 |
-| `mobile_swipe` | 模拟平滑滑动手势或长按操作 |
+| `mobile_swipe` | 模拟平滑滑动手势、复杂手绘线条或长按操作 |
 | `mobile_type` | 静默将文本灌入当前焦点输入框（0 键盘弹窗） |
 | `mobile_press_key` | 向副屏发送物理按键（BACK, HOME, ENTER 等） |
 | `mobile_launch_app` | 在副屏定向拉起目标应用或 Activity |
@@ -78,7 +94,21 @@
 
 `dsh-preset-mobile-use` is a specialized autonomous Mobile Use Agent Preset authored for **DeepSeek Harness (DSH)**.
 
-It empowers the DSH Agent with native, background-headless **Android Mobile Use** capabilities, enabling vision-based planning, UI hierarchy parsing, and silent multi-step execution.
+It empowers the DSH Agent with native, background-headless **Android Mobile Use** capabilities, enabling vision-based planning, UI hierarchy parsing, fine motor gesture control, and silent multi-step execution.
+
+---
+
+### Real-world Showcase: Autonomous Hand-drawn Artwork (Pure Motor Precision)
+
+Below is an authentic execution record: The user prompted in DSH: **"Go to my system Notes app and draw a picture using the system pen! Must be hand-drawn!"**
+
+The Agent autonomously opened the Notes app on the headless virtual display, selected the drawing brush, and executed **105 consecutive precision swipe steps stroke by stroke**, creating a complete landscape artwork (*Mountains, House with smoking chimney, Tree, Flowers, Sun, and Path*):
+
+| DSH Execution Workflow (1 turn, 105 steps) | Final Hand-drawn Artwork in Notes App |
+| :---: | :---: |
+| <img src="docs/images/dsh_drawing_task.jpg" width="340" alt="DSH Task Execution" /> | <img src="docs/images/drawn_landscape.jpg" width="340" alt="Drawn Landscape Result" /> |
+
+The entire drawing sequence was executed silently in the background virtual display without disrupting foreground usage on the physical screen!
 
 ---
 
@@ -99,6 +129,8 @@ It empowers the DSH Agent with native, background-headless **Android Mobile Use*
 
 - **100% Background Headless Execution**:
   Apps run and render entirely on an independent secondary Virtual Display (Display > 0). The physical display 0 remains completely undisturbed.
+- **Precision Gesture Control**:
+  Enables fine touch gestures and micro-swipes (`mobile_swipe` / `mobile_click`) capable of driving creative canvas drawing.
 - **Dual Perception Engine**:
   Combines rapid accessibility node hierarchy dumps (`mobile_dump_ui`) with real-time visual screenshots (`mobile_screenshot`).
 - **Sliding-Window Image Offload**:
