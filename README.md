@@ -15,13 +15,13 @@
 
 ### 重要前置条件与硬性依赖（必读）
 
-**本预设专门设计用于在已获得 Root 权限的 Android 手机上本地执行，不能直接脱离手机环境运行！**
+**本预设专门设计用于在已获得 Root 权限的 Android 手机上本地执行，不能脱离手机环境单独运行！**
 
 1. **强依赖 KSU 底座模块**：
    - 本预设必须配合底层驱动模块 **[agent-mobile-use](https://github.com/AcidGr/agent-mobile-use)** 一起使用；
    - 必须先在手机上通过 **KernelSU / APatch / Magisk** 刷入 `agent-mobile-use-ksu-v3.5.zip`，并保持后台 `vd_server` 网关服务运行（默认监听 `http://127.0.0.1:3070`）。
 2. **手机环境要求**：
-   - **操作系统**：Android 15 / Android 16（实验环境基于 ColorOS 16，Linux 6.12 内核）；
+   - **操作系统**：Android 15 / Android 16（实测实验环境基于 ColorOS 16，Linux 6.12 内核）；
    - **Root 与 Xposed**：手机必须拥有完整的 Root 特权，并建议启用 **LSPosed** 挂载模块内的隐形补丁以实现跨屏焦点隔离与免软键盘弹窗。
 
 ---
@@ -29,23 +29,13 @@
 ### 核心特性
 
 - **完全后台静默 (Headless Execution)**：
-  自动化应用在系统内存中的独立虚拟副屏（Display > 0）上渲染与操作，手机主屏不跳前台、不抢焦点、可以正常日常使用或息屏。
+  自动化应用在系统内存中的独立虚拟副屏（Display > 0）上渲染与操作，手机物理主屏不跳前台、不抢焦点、可以正常日常使用或息屏。
 - **双模感知 (Dual Perception)**：
   提供结构化无障碍树解析（`mobile_dump_ui`）与实时副屏高分辨率快照（`mobile_screenshot`）。
 - **智能滑动窗口图像上下文压缩 (Sliding-Window Image Offload)**：
   在多步操作过程中，预设会自动将历史轮次的截图替换为轻量占位符（`[Image offloaded]`），始终仅将最新的副屏快照送入多模态模型视觉编码，彻底消除多模态会话中 80k+ Token 累积导致的 40 秒以上推理延迟，同时确保 System Prompt 100% 命中 KV Cache。
 - **免软键盘文字灌入 (Silent Text Injection)**：
   通过系统的无障碍剪贴板与原生文本注入，中英文长难句与符号一键送达，完全不在主屏弹出软键盘。
-
----
-
-### 副屏后台运行效果示例
-
-下图为 Agent 在后台独立副屏中拉起系统设置界面的实时静默快照（个人敏感账户信息已做高斯模糊脱敏处理）：
-
-<p align="center">
-  <img src="docs/images/headless_demo.png" alt="Headless Demo" width="360" />
-</p>
 
 ---
 
