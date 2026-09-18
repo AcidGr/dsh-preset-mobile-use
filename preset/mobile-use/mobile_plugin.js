@@ -355,6 +355,30 @@ export function apply(ctx) {
 		},
 	}));
 
+	// 10. mobile_switch_mode
+	ctx.tools.register(defineTool({
+		name: "mobile_switch_mode",
+		description: "Switch the target display mode between foreground (Display 0, physical screen) and background (virtual display, headless isolated screen). All subsequent mobile actions (click, type, dump_ui, screenshot, launch) will target the chosen display.",
+		parameters: {
+			mode: {
+				type: "string",
+				required: true,
+				description: "Target mode: 'foreground' (or 'fg' / '0') for main physical screen, 'background' (or 'bg') for virtual display.",
+			},
+		},
+		output: {
+			schema: { type: "string" },
+			render: (_args, val) => [{ type: "text", text: val }],
+		},
+		async execute(args) {
+			const res = await postJson("/api/mode", { mode: args.mode });
+			if (!res.success) {
+				throw new Error(`Failed to switch mode: ${res.message || "unknown error"}`);
+			}
+			return res.message || `Switched to ${res.mode} mode (Display ${res.target_display_id})`;
+		},
+	}));
+
 	// Auto status notification: sync todo_write progress silently to Android status bar
 	ctx.on("tools/result", async (_scope, exec, _result) => {
 		try {
