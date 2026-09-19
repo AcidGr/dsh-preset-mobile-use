@@ -167,7 +167,7 @@ export function apply(ctx) {
 	// 3. mobile_dump_ui
 	ctx.tools.register(defineTool({
 		name: "mobile_dump_ui",
-		description: "Inspect and dump the current Android accessibility node hierarchy on the virtual display. Returns a compact JSON array of clickable, editable, scrollable, and checkable elements with exact screen center coordinates [x, y], text, resource IDs, and bounding boxes. ALWAYS prefer this tool to find exact element coordinates over guessing.",
+		description: "Inspect the current screen's accessibility node tree. Returns a JSON object: {display_id, mode, width, height, windows, total, returned, truncated, nodes}. Coordinates in nodes are ABSOLUTE PIXELS with origin at the top-left; `b` is [left,top,right,bottom] and `ctr` is the element's centre [x,y]. Each node carries only raw signals: `type`, `text`/`desc`/`vid`, `click` (this element itself accepts a tap), `enabled` (0 = disabled, do not tap), `visible` (0 = scrolled off screen), `checkable`/`checked`, `scroll` (a scrollable container), `focused`. IMPORTANT: when a node is NOT itself clickable it may carry a resolved `tap` target — `tap:[x,y]`, `tap_id`, `tap_x` (how many times larger that ancestor is). Click `tap` when present; it is the ancestor that will actually receive the gesture, so you never have to reason about touch bubbling. Always prefer a fresh dump over guessing from a screenshot. Read the envelope before acting: if `truncated` is true the list is incomplete — scroll to reveal more instead of assuming an element is absent; if `windows` is 0 or `nodes` is empty while `windows` > 0, the app suppresses its accessibility tree (some hardened apps do) — fall back to mobile_screenshot for that screen.",
 		parameters: {},
 		output: {
 			schema: { type: "string" },
@@ -187,7 +187,7 @@ export function apply(ctx) {
 	// 4. mobile_click
 	ctx.tools.register(defineTool({
 		name: "mobile_click",
-		description: "Perform a physical touch tap/click at coordinates (x, y) on the Android virtual display. Use coordinates obtained from mobile_dump_ui or visual inspection.",
+		description: "Tap at absolute pixel coordinates (x, y) on the target display. Coordinates are only valid for the screen state of the LATEST observation: take them from `ctr`, or from `tap` when the node you care about carries one, in a fresh mobile_dump_ui result — never reuse coordinates after anything changed the screen. If a tap appears to have no effect, re-observe instead of tapping the same point again.",
 		parameters: {
 			x: {
 				type: "integer",
@@ -209,7 +209,7 @@ export function apply(ctx) {
 			if (!res.success) {
 				throw new Error(`Click failed: ${res.message || "unknown error"}`);
 			}
-			return `Clicked at (${args.x}, ${args.y})`;
+			return `Tapped (${args.x}, ${args.y}). The screen has changed or is changing — run mobile_dump_ui again to see the result before the next action.`;
 		},
 	}));
 
