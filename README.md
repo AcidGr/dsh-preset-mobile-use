@@ -15,6 +15,8 @@
 
 ### 实测实录：纯手绘作画实机效果展示（含金量极高）
 
+📺 **B站高清实机演示视频**：[https://www.bilibili.com/video/BV1WYeS6YEwt](https://www.bilibili.com/video/BV1WYeS6YEwt)
+
 以下为真实任务记录：用户仅在 DSH 提出一条自然语言指令 **“去我的便签里面，用绘制的方式（用系统的笔）随便画一幅画吧！要手绘噢！”**。
 
 Agent 自动在后台独立副屏中拉起系统便签、选择系统画笔、经过 105 步高精度触控笔触自主规划与滑动绘制，**一手一手、一笔一划** 纯手绘完成了整幅细腻的《手绘田园风景画》（远山、房屋烟囱、大树、小花、太阳与小路）：
@@ -100,6 +102,8 @@ It empowers the DSH Agent with native, background-headless **Android Mobile Use*
 ---
 
 ### Real-world Showcase: Autonomous Hand-drawn Artwork (Pure Motor Precision)
+
+📺 **Bilibili Showcase Video**: [https://www.bilibili.com/video/BV1WYeS6YEwt](https://www.bilibili.com/video/BV1WYeS6YEwt)
 
 Below is an authentic execution record: The user prompted in DSH: **"Go to my system Notes app and draw a picture using the system pen! Must be hand-drawn!"**
 
