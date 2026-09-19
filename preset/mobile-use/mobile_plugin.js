@@ -167,15 +167,28 @@ export function apply(ctx) {
 	// 3. mobile_dump_ui
 	ctx.tools.register(defineTool({
 		name: "mobile_dump_ui",
-		description: "Inspect the current screen's accessibility node tree. Returns a JSON object: {display_id, mode, width, height, windows, total, returned, truncated, nodes}. Coordinates in nodes are ABSOLUTE PIXELS with origin at the top-left; `b` is [left,top,right,bottom] and `ctr` is the element's centre [x,y]. Each node carries only raw signals: `type`, `text`/`desc`/`vid`, `click` (this element itself accepts a tap), `enabled` (0 = disabled, do not tap), `visible` (0 = scrolled off screen), `checkable`/`checked`, `scroll` (a scrollable container), `focused`. IMPORTANT: when a node is NOT itself clickable it may carry a resolved `tap` target — `tap:[x,y]`, `tap_id`, `tap_x` (how many times larger that ancestor is). Click `tap` when present; it is the ancestor that will actually receive the gesture, so you never have to reason about touch bubbling. Always prefer a fresh dump over guessing from a screenshot. Read the envelope before acting: if `truncated` is true the list is incomplete — scroll to reveal more instead of assuming an element is absent; if `windows` is 0 or `nodes` is empty while `windows` > 0, the app suppresses its accessibility tree (some hardened apps do) — fall back to mobile_screenshot for that screen.",
-		parameters: {},
+		description: "Inspect the current screen's accessibility node tree. Returns a JSON object: {display_id, mode, width, height, windows, total, returned, truncated, nodes}. Coordinates in nodes are ABSOLUTE PIXELS with origin at the top-left; `b` is [left,top,right,bottom] and `ctr` is the element's centre [x,y]. Each node carries only raw signals: `type`, `text`/`desc`/`vid`, `click` (this element itself accepts a tap), `enabled` (0 = disabled, do not tap), `visible` (0 = scrolled off screen), `checkable`/`checked`, `scroll` (a scrollable container), `focused`, `w` (window index; when `w` appears at all there is a dialog or overlay on screen, and nodes without `w` sit BELOW it and may be covered). IMPORTANT: when a node is NOT itself clickable it may carry a resolved `tap` target — `tap:[x,y]`, `tap_id`, `tap_x` (how many times larger that ancestor is). Click `tap` when present; it is the ancestor that will actually receive the gesture, so you never have to reason about touch bubbling. A node with neither `click` nor `tap` may carry `why` (e.g. \"scrollable\", \"target>halfscreen\"): its resolved target was deliberately dropped because tapping it would only scroll or would land on a layout wrapper — do not guess a coordinate for such a node, find a child or sibling that does carry a target. READ THE ENVELOPE FIRST — it is how you tell these cases apart: `dup` is how many identical overlapping nodes were merged away; `empty_scan` means the accessibility engine reported no window at all (a retry, not an empty screen); `windows: 0` with nodes present, or `nodes: []` while `windows` > 0, means the app suppresses its tree and you must fall back to mobile_screenshot; `x_extent`/`y_extent` appear when content reaches outside the screen. TRUNCATION: nodes are emitted most-useful-first, so if `truncated` is true check `omitted_top`. When `omitted_top` is ABSENT, nothing tappable was dropped (only labels/decoration, see `omitted_min`) and you should ACT on what you have; when it is PRESENT, real controls were cut off — call mobile_dump_ui again with y_min=next_y to read the rest, or scroll and re-dump. WEBVIEW LIMITATION: an H5/WebView page often returns a single WebView node no matter how full the screen looks; when you see exactly one `WebView` node and `total` is 1, the page content is invisible to this tool — use mobile_screenshot to read it, and remember you cannot resolve its buttons from the tree. Always prefer a fresh dump over guessing from a screenshot.",
+		parameters: {
+			y_min: {
+				type: "integer",
+				description: "Optional vertical paging window: return only nodes ending below this y coordinate. Pass next_y from a truncated result to read the part of the screen that did not fit.",
+			},
+			y_max: {
+				type: "integer",
+				description: "Optional vertical paging window: return only nodes starting above this y coordinate. Omit for no lower bound.",
+			},
+		},
 		output: {
 			schema: { type: "string" },
 			render: (_args, val) => [{ type: "text", text: val }],
 		},
-		async execute() {
+		async execute(args) {
 			try {
-				const resp = await fetch(`${SERVER_BASE}/api/dump_ui`);
+				const q = [];
+				if (typeof args.y_min === "number") q.push(`y_min=${args.y_min}`);
+				if (typeof args.y_max === "number") q.push(`y_max=${args.y_max}`);
+				const suffix = q.length ? `?${q.join("&")}` : "";
+				const resp = await fetch(`${SERVER_BASE}/api/dump_ui${suffix}`);
 				const text = await resp.text();
 				return text;
 			} catch (err) {
