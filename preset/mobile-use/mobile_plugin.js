@@ -400,29 +400,39 @@ export function apply(ctx) {
 					? `[Mobile Agent] 任务已全部完成 (${completed}/${total})`
 					: `[Mobile Agent] 任务进度 (${completed}/${total})`;
 
-				// 顶部第一行作为焦点摘要展示
-				const header = inProgress
-					? `>> 当前执行: ${(inProgress.content || "").trim().replace(/\r?\n/g, " ")}`
-					: (isAllDone ? ">> 所有任务均已执行完毕" : ">> 准备开始执行任务...");
+				// 顶部第一行作为焦点摘要展示（去除 >> 箭头，更加干净）
+				let header = "";
+				if (isAllDone) {
+					header = "所有任务均已执行完毕";
+				} else if (inProgress) {
+					const curTask = (inProgress.content || "").trim().replace(/\r?\n/g, " ");
+					header = `当前执行: ${curTask}`;
+				} else {
+					header = "准备开始执行任务...";
+				}
 
-				// 格式化完整的纯文本大窗待办清单（无任何 Emoji）
+				// 格式化纯净打勾方框待办清单（Unicode 原生方框符号，非彩色 Emoji）
+				// 已完成: ☑, 进行中: ◉, 待办: ☐
 				const lines = todos.map((t, idx) => {
-					let tag = "[待办]";
-					if (t.status === "completed") {
-						tag = "[完成]";
-					} else if (t.status === "in_progress") {
-						tag = "[进行]";
-					}
 					const cleanContent = (t.content || "").trim().replace(/\r?\n/g, " ");
-					return `${tag} ${idx + 1}. ${cleanContent}`;
+					if (t.status === "completed") {
+						return `☑ ${idx + 1}. ${cleanContent}`;
+					} else if (t.status === "in_progress") {
+						return `◉ ${idx + 1}. ${cleanContent}`;
+					} else {
+						return `☐ ${idx + 1}. ${cleanContent}`;
+					}
 				});
 
-				const content = `${header}\n----------------------------------------\n${lines.join("\n")}`;
+				const divider = "────────────";
+				const content = `${header}\n${divider}\n${lines.join("\n")}`;
 
 				await postJson("/api/notify", {
 					title,
 					content,
 					tag: "dsh_agent",
+					total,
+					completed,
 				});
 				fs.appendFileSync("/tmp/agent_notify.log", `[${new Date().toISOString()}] Posted notify: ${title}\n`);
 			}
