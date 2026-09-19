@@ -200,7 +200,7 @@ export function apply(ctx) {
 	// 4. mobile_click
 	ctx.tools.register(defineTool({
 		name: "mobile_click",
-		description: "Tap at absolute pixel coordinates (x, y) on the target display. Coordinates are only valid for the screen state of the LATEST observation: take them from `tap` when the node carries one, otherwise compute the centre as [(left+right)/2, (top+bottom)/2] from its `b`, using a fresh mobile_dump_ui result — never reuse coordinates after anything changed the screen. If a tap appears to have no effect, re-observe instead of tapping the same point again.",
+		description: "Tap at absolute pixel coordinates (x, y). Coordinates are only valid for the screen state of the LATEST observation: take them from `tap` when the node carries one, otherwise compute the centre as [(left+right)/2, (top+bottom)/2] from its `b`, using a fresh mobile_dump_ui result — never reuse coordinates after anything changed the screen. If a tap appears to have no effect, re-observe instead of tapping the same point again. HOW THE TAP IS DELIVERED MATTERS: the default (`via` omitted) clicks the accessibility node at that point with performAction, which injects NO touch event, so it does not disturb the person using the physical screen — verified on this device, where coordinate taps were collapsing the user's soft keyboard mid-typing and cancelling their gestures with ACTION_CANCEL while performAction did neither. It falls back to an injected coordinate tap only when nothing actionable is at the point, and the result always reports which happened: read `via` in the reply — `a11y` means no touch was injected, `coord` means one was. Use `via:\"a11y\"` when you must not inject a touch at all (it fails rather than fall back), and `via:\"coord\"` only when you specifically want the injected tap. Note what can NOT be done this way: canvas-drawn UI with no accessible nodes, and swipes — mobile_swipe still injects a real touch and can therefore interrupt the user.",
 		parameters: {
 			x: {
 				type: "integer",
@@ -212,17 +212,27 @@ export function apply(ctx) {
 				required: true,
 				description: "Y coordinate (0 to screen height)",
 			},
+			via: {
+				type: "string",
+				enum: ["auto", "a11y", "coord"],
+				description: "How to deliver the tap. `auto` (default): accessibility click first, coordinate tap as a fallback. `a11y`: accessibility only, and FAIL if there is no actionable node instead of injecting a touch. `coord`: inject a coordinate tap directly.",
+			},
 		},
 		output: {
 			schema: { type: "string" },
 			render: (_args, val) => [{ type: "text", text: val }],
 		},
 		async execute(args) {
-			const res = await postJson("/api/click", { x: args.x, y: args.y });
+			const body = { x: args.x, y: args.y };
+			if (args.via) body.via = args.via;
+			const res = await postJson("/api/click", body);
 			if (!res.success) {
 				throw new Error(`Click failed: ${res.message || "unknown error"}`);
 			}
-			return `Tapped (${args.x}, ${args.y}). The screen has changed or is changing — run mobile_dump_ui again to see the result before the next action.`;
+			const how = res.via === "a11y"
+				? `via accessibility performAction on ${res.vid || "the node there"} — no touch event was injected, so the user's own gestures and keyboard were not disturbed`
+				: `via an INJECTED coordinate tap (${res.detail || ""}) — this can interrupt the user's gesture or collapse their soft keyboard`;
+			return `Tapped (${args.x}, ${args.y}) ${how}. The screen has changed or is changing — run mobile_dump_ui again to see the result before the next action.`;
 		},
 	}));
 
