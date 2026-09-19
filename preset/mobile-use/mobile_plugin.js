@@ -379,30 +379,57 @@ export function apply(ctx) {
 		},
 	}));
 
-	// Auto status notification: sync todo_write progress silently to Android status bar
-	ctx.on("tools/result", async (_scope, exec, _result) => {
+	// Auto status notification: sync todo_write progress silently to Android status bar (BigText style)
+	ctx.on("tools/result", async (exec, result) => {
 		try {
-			if (exec?.name === "todo_write") {
-				const todos = exec.args?.todos || [];
+			// DSH tools/result emits (exec: ToolExecution, result: ToolExecutionResult)
+			const name = exec?.name;
+			if (name === "todo_write") {
+				// Tool arguments in DSH are stored in `exec.arguments` (fallback to `exec.args` or `exec.input`)
+				const rawArgs = exec.arguments ?? exec.args ?? exec.input ?? {};
+				const args = typeof rawArgs === "string" ? JSON.parse(rawArgs) : rawArgs;
+				const todos = args?.todos || [];
 				if (!Array.isArray(todos) || todos.length === 0) return;
 
 				const total = todos.length;
 				const completed = todos.filter((t) => t.status === "completed").length;
 				const inProgress = todos.find((t) => t.status === "in_progress");
 
-				const title = `Mobile Agent 进度: ${completed}/${total}`;
-				const content = inProgress
-					? `正在执行: ${inProgress.content}`
-					: (completed === total ? "所有任务已全部执行完毕" : "等待下一步调度");
+				const isAllDone = completed === total;
+				const title = isAllDone
+					? `[Mobile Agent] 任务已全部完成 (${completed}/${total})`
+					: `[Mobile Agent] 任务进度 (${completed}/${total})`;
+
+				// 顶部第一行作为焦点摘要展示
+				const header = inProgress
+					? `>> 当前执行: ${(inProgress.content || "").trim().replace(/\r?\n/g, " ")}`
+					: (isAllDone ? ">> 所有任务均已执行完毕" : ">> 准备开始执行任务...");
+
+				// 格式化完整的纯文本大窗待办清单（无任何 Emoji）
+				const lines = todos.map((t, idx) => {
+					let tag = "[待办]";
+					if (t.status === "completed") {
+						tag = "[完成]";
+					} else if (t.status === "in_progress") {
+						tag = "[进行]";
+					}
+					const cleanContent = (t.content || "").trim().replace(/\r?\n/g, " ");
+					return `${tag} ${idx + 1}. ${cleanContent}`;
+				});
+
+				const content = `${header}\n----------------------------------------\n${lines.join("\n")}`;
 
 				await postJson("/api/notify", {
 					title,
 					content,
 					tag: "dsh_agent",
 				});
+				fs.appendFileSync("/tmp/agent_notify.log", `[${new Date().toISOString()}] Posted notify: ${title}\n`);
 			}
-		} catch (_) {
-			// Silent catch to prevent side effects on main agent loop
+		} catch (err) {
+			try {
+				fs.appendFileSync("/tmp/agent_notify.log", `[${new Date().toISOString()}] Error: ${err?.stack || err}\n`);
+			} catch (_) {}
 		}
 	});
 }
