@@ -166,7 +166,14 @@
     - id: tool-result-pruner
       name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
       config:
-        thresholdChars: 8192
+        # Raised from 8192 (which is also the plugin default) so a dense mobile screen
+        # can be delivered in ONE call. vd-tool's MAX_NODES_CHARS is 12000, so a dump
+        # tops out near 12.5k code points; measured worst case is Amap, ~12433 before
+        # `ctr` was dropped and ~10500 after. The two numbers must stay in step —
+        # tool budget < thresholdChars — or the pruner slices the JSON mid-array and the
+        # model receives a corrupt fragment instead of a shortened one.
+        # head/tail is only the sliver that survives if something still exceeds this.
+        thresholdChars: 14000
         headChars: 4096
         tailChars: 1024
 
