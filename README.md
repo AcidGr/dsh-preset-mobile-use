@@ -49,7 +49,7 @@ Agent 自动在后台独立副屏中拉起系统便签、选择系统画笔、�
 - **超高精度物理手势调度**：
   支持精细毫秒级滑动、贝塞尔拟合触控（`mobile_swipe` / `mobile_click`），不仅能点按 UI 控件，甚至能实现像素级的连续自主手绘与拖拽。
 - **双模感知 (Dual Perception)**：
-  提供结构化无障碍树解析（`mobile_dump_ui`）与实时副屏高分辨率快照（`mobile_screenshot`）。
+  提供扁平化元素列表（`mobile_dump_ui`，每元素一行、坐标即绝对像素）与实时副屏高分辨率快照（`mobile_screenshot`）。
 - **智能滑动窗口图像上下文压缩 (Sliding-Window Image Offload)**：
   在多步操作过程中，预设会自动将历史轮次的截图替换为轻量占位符（`[Image offloaded]`），始终仅将最新的副屏快照送入多模态模型视觉编码，彻底消除多模态会话中 80k+ Token 累积导致的 40 秒以上推理延迟，同时确保 System Prompt 100% 命中 KV Cache。
 - **免软键盘文字灌入 (Silent Text Injection)**：
@@ -65,7 +65,7 @@ Agent 自动在后台独立副屏中拉起系统便签、选择系统画笔、�
 | :--- | :--- |
 | `mobile_status` | 查询当前副屏运行状态、Display ID、宽度、高度与 DPI 参数 |
 | `mobile_screenshot` | 截取副屏高分辨率快照（1/3 降采样 JPEG q92）并自动执行滑动窗口上下文压缩 |
-| `mobile_dump_ui` | 获取当前副屏结构化控件树与可点击节点中心绝对坐标 |
+| `mobile_dump_ui` | 获取当前副屏元素列表（**每元素一行**的扁平文本：状态行 + 列名单行 + `id type "name" x1,y1,x2,y2 flags`），坐标已是绝对像素 |
 | `mobile_click` | 向指定 `(x, y)` 发送物理触控点击事件 |
 | `mobile_swipe` | 模拟平滑滑动手势、复杂手绘线条或长按操作 |
 | `mobile_type` | 静默将文本灌入当前焦点输入框（0 键盘弹窗） |
@@ -144,7 +144,7 @@ The entire drawing sequence was executed silently in the background virtual disp
 - **Precision Gesture Control**:
   Enables fine touch gestures and micro-swipes (`mobile_swipe` / `mobile_click`) capable of driving creative canvas drawing.
 - **Dual Perception Engine**:
-  Combines rapid accessibility node hierarchy dumps (`mobile_dump_ui`) with real-time visual screenshots (`mobile_screenshot`).
+  Combines a flat element listing (`mobile_dump_ui`: one line per element, coordinates already absolute display pixels) with real-time visual screenshots (`mobile_screenshot`).
 - **Sliding-Window Image Offload**:
   Automatically offloads older screenshot images into lean placeholders (`[Image offloaded]`), preserving KV cache hits for the static system prompt while avoiding the 40s+ multimodality inference lag caused by accumulating 80k+ image tokens.
 - **Silent Text Injection**:
