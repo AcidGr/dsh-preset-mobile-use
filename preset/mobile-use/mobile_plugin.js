@@ -79,6 +79,23 @@ const sharp = resolveOptionalDependency("sharp");
 const MAX_DELIVERED_LONG_EDGE = 1302;
 
 /**
+ * Encoding of the downscaled image that actually reaches the model.
+ *
+ * This buffer is what the request carries, every request, for as long as the screenshot
+ * stays the newest one — the harness passes a clean JPEG through byte-identically, so its
+ * size is the request size. Measured against the real screen, on this display:
+ *
+ *   resize -> PNG              47.24 dB   583 KB  (777 KB once base64'd)
+ *   resize -> JPEG q92         41.02 dB    60 KB  ( 81 KB once base64'd)
+ *   resize -> JPEG q95         42.00 dB    85 KB  (114 KB once base64'd)
+ *
+ * q92 is the chosen point: ~9.6x less to upload per request for a few dB of softness that
+ * the agent still reads UI at. Raising the gateway's own JPEG quality instead buys almost
+ * nothing (q85 -> q95 was worth +0.11 dB), because the second encode dominates the loss.
+ */
+const DELIVERED_JPEG_QUALITY = 92;
+
+/**
  * Pick the smallest integer divisor that brings the long edge within the pass-through limit,
  * so the factor the model applies is a whole number it cannot misremember.
  */
@@ -207,7 +224,7 @@ export function apply(ctx) {
 					if (plan.divisor > 1) {
 						buf = await sharp(buf)
 							.resize({ width: plan.width, height: plan.height, fit: "fill" })
-							.png()
+							.jpeg({ quality: DELIVERED_JPEG_QUALITY })
 							.toBuffer();
 					}
 					delivery = {
@@ -225,10 +242,10 @@ export function apply(ctx) {
 				// than claiming a factor the delivered image may not honour.
 				delivery = undefined;
 			}
-			// The downscaled branch re-encodes through sharp, so its output is always PNG
-			// no matter what the gateway sent; only the pass-through case keeps the
-			// server's format.
-			if (delivery && delivery.divisor > 1) mediaType = "image/png";
+			// The downscaled branch re-encodes through sharp, so the attachment is JPEG
+			// there no matter what the gateway sent; only the pass-through case keeps the
+			// server's own format.
+			if (delivery && delivery.divisor > 1) mediaType = "image/jpeg";
 
 			const attachments = ctx.get("attachments");
 			if (attachments) {
