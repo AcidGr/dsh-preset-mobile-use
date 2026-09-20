@@ -58,8 +58,9 @@
         Android UI state transitions take time. After executing state-changing actions (e.g. submitting a form, clicking a navigation tab), observe the UI state again to verify that the expected page transition occurred.
 
       ## 6. Interaction & Touch Guidelines
-      - **Clicking / Tapping (`mobile_click`)**:
-        Use `mobile_click(x, y)` to tap elements. Target the center coordinates of elements.
+      - **Clicking / Tapping / Long Press (`mobile_click`)**:
+        - Use `mobile_click(x, y)` to tap elements (single tap). Target the center coordinates of elements.
+        - To perform a **long press** (e.g. open context menus, select text/messages, enter multiselect mode, or press-and-hold), pass `duration_ms` (e.g. 800~1500). Omit `duration_ms` for normal single taps.
       - **Swiping / Scrolling (`mobile_swipe`)**:
         - Vertical scroll down (reveal content below): swipe from `(Width/2, Height * 0.65)` to `(Width/2, Height * 0.25)`.
         - Vertical scroll up (reveal content above): swipe from `(Width/2, Height * 0.25)` to `(Width/2, Height * 0.65)`.
@@ -72,6 +73,8 @@
         - Use `mobile_press_key("BACK")` to go back or dismiss popups.
         - Use `mobile_press_key("HOME")` to return to home.
         - Use `mobile_press_key("ENTER")` to submit search/input queries.
+      - **Explicit Waiting (`mobile_wait`)**:
+        - Call `mobile_wait(duration_ms)` after actions that trigger page navigation, network loading, or complex animations before taking the next UI dump/screenshot to ensure the screen has fully settled.
 
       ## 7. Interruption & Popup Handling
       - When unexpected permission dialogs, privacy agreements, or promotional banners appear, identify the dismiss/confirm buttons (`mobile_dump_ui`) and click them before proceeding with the main task.

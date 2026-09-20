@@ -287,6 +287,12 @@ export function apply(ctx) {
 			try {
 				const resp = await fetch(`${SERVER_BASE}/api/dump_ui`);
 				const text = await resp.text();
+				try {
+					const data = JSON.parse(text);
+					if (data && data.notice) {
+						return `${data.notice}\n${text}`;
+					}
+				} catch (_) {}
 				return text;
 			} catch (err) {
 				return `Error dumping UI hierarchy: ${err.message}`;
@@ -297,7 +303,7 @@ export function apply(ctx) {
 	// 4. mobile_click
 	ctx.tools.register(defineTool({
 		name: "mobile_click",
-		description: "Tap at absolute pixel coordinates (x, y) on the target display. Coordinates are only valid for the screen state of the LATEST observation: take them from `tap` when the node carries one, otherwise compute the centre as [(left+right)/2, (top+bottom)/2] from its `b`, using a fresh mobile_dump_ui result — never reuse coordinates after anything changed the screen. If a tap appears to have no effect, re-observe instead of tapping the same point again.",
+		description: "Tap or long-press at absolute pixel coordinates (x, y) on the target display. Omit duration_ms for a standard single tap; pass duration_ms (e.g. 500~1500) for a long press (useful for opening context menus, selecting text/messages, or press-and-hold interactions). Coordinates are only valid for the screen state of the LATEST observation: take them from `tap` when the node carries one, otherwise compute the centre as [(left+right)/2, (top+bottom)/2] from its `b`, using a fresh mobile_dump_ui result — never reuse coordinates after anything changed the screen. If a tap appears to have no effect, re-observe instead of tapping the same point again.",
 		parameters: {
 			x: {
 				type: "integer",
@@ -309,17 +315,29 @@ export function apply(ctx) {
 				required: true,
 				description: "Y coordinate (0 to screen height)",
 			},
+			duration_ms: {
+				type: "integer",
+				description: "Optional press duration in milliseconds. Omit for standard instantaneous single tap (~50ms); pass 500~1500 for a long press (e.g. context menu, item selection, or hold action).",
+			},
 		},
 		output: {
 			schema: { type: "string" },
 			render: (_args, val) => [{ type: "text", text: val }],
 		},
 		async execute(args) {
-			const res = await postJson("/api/click", { x: args.x, y: args.y });
+			const payload = { x: args.x, y: args.y };
+			if (typeof args.duration_ms === "number" && args.duration_ms > 0) {
+				payload.duration_ms = args.duration_ms;
+			}
+			const res = await postJson("/api/click", payload);
 			if (!res.success) {
 				throw new Error(`Click failed: ${res.message || "unknown error"}`);
 			}
-			return `Tapped (${args.x}, ${args.y}). The screen has changed or is changing — run mobile_dump_ui again to see the result before the next action.`;
+			const actionDesc = payload.duration_ms
+				? `Long-pressed (${args.x}, ${args.y}) for ${payload.duration_ms}ms`
+				: `Tapped (${args.x}, ${args.y})`;
+			const resultText = `${actionDesc}. The screen has changed or is changing — run mobile_dump_ui again to see the result before the next action.`;
+			return res.notice ? `${res.notice}\n${resultText}` : resultText;
 		},
 	}));
 
@@ -350,7 +368,8 @@ export function apply(ctx) {
 			if (!res.success) {
 				throw new Error(`Swipe failed: ${res.message || "unknown error"}`);
 			}
-			return `Swiped from (${args.x1}, ${args.y1}) to (${args.x2}, ${args.y2}) in ${duration}ms`;
+			const resultText = `Swiped from (${args.x1}, ${args.y1}) to (${args.x2}, ${args.y2}) in ${duration}ms`;
+			return res.notice ? `${res.notice}\n${resultText}` : resultText;
 		},
 	}));
 
@@ -374,7 +393,8 @@ export function apply(ctx) {
 			if (!res.success) {
 				throw new Error(`Text input failed: ${res.message || "unknown error"}`);
 			}
-			return `Injected text: "${args.text}"`;
+			const resultText = `Injected text: "${args.text}"`;
+			return res.notice ? `${res.notice}\n${resultText}` : resultText;
 		},
 	}));
 
@@ -398,7 +418,29 @@ export function apply(ctx) {
 			if (!res.success) {
 				throw new Error(`Key injection failed: ${res.message || "unknown error"}`);
 			}
-			return `Pressed key: ${args.key}`;
+			const resultText = `Pressed key: ${args.key}`;
+			return res.notice ? `${res.notice}\n${resultText}` : resultText;
+		},
+	}));
+
+	// 7.5. mobile_wait
+	ctx.tools.register(defineTool({
+		name: "mobile_wait",
+		description: "Pause execution for a specified duration in milliseconds to wait for page transitions, asynchronous network loading, skeleton screens, or animations to finish before the next observation.",
+		parameters: {
+			duration_ms: {
+				type: "integer",
+				description: "Duration to wait in milliseconds (default: 1000, max: 10000)",
+			},
+		},
+		output: {
+			schema: { type: "string" },
+			render: (_args, val) => [{ type: "text", text: val }],
+		},
+		async execute(args) {
+			const ms = Math.min(Math.max(args.duration_ms || 1000, 100), 10000);
+			await new Promise((resolve) => setTimeout(resolve, ms));
+			return `Waited for ${ms}ms. UI state has settled. Proceed with observation (mobile_dump_ui or mobile_screenshot).`;
 		},
 	}));
 
@@ -429,7 +471,8 @@ export function apply(ctx) {
 			if (!res.success) {
 				throw new Error(`Launch failed: ${res.message || "unknown error"}`);
 			}
-			return `Launched app ${args.package}${args.activity ? "/" + args.activity : ""}: ${res.message || "OK"}`;
+			const resultText = `Launched app ${args.package}${args.activity ? "/" + args.activity : ""}: ${res.message || "OK"}`;
+			return res.notice ? `${res.notice}\n${resultText}` : resultText;
 		},
 	}));
 
