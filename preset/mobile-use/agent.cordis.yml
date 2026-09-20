@@ -166,14 +166,17 @@
     - id: tool-result-pruner
       name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
       config:
-        # Raised from 8192 (which is also the plugin default) so a dense mobile screen
-        # can be delivered in ONE call. vd-tool's MAX_NODES_CHARS is 12000, so a dump
-        # tops out near 12.5k code points; measured worst case is Amap, ~12433 before
-        # `ctr` was dropped and ~10500 after. The two numbers must stay in step —
-        # tool budget < thresholdChars — or the pruner slices the JSON mid-array and the
-        # model receives a corrupt fragment instead of a shortened one.
+        # Raised from 8192 (the plugin default) so a dense mobile screen arrives in ONE
+        # call, then raised again to 23000 when paging was removed. With no y_min/y_max
+        # fallback an over-budget dump has no recovery path at all, so the budget has to
+        # be big enough that a real screen fits rather than merely usually fits.
+        # vd-tool's MAX_NODES_CHARS is 20000, so a dump tops out near 20.5k code points.
+        # The two numbers must stay in step — tool budget < thresholdChars — or the
+        # pruner slices the JSON mid-array and the model receives a corrupt fragment
+        # instead of a shortened one. Measured dense screens are far below both numbers:
+        # Amap 10403 chars, Taobao 11010, WeChat 7319, Meituan 4241, Settings 3920.
         # head/tail is only the sliver that survives if something still exceeds this.
-        thresholdChars: 14000
+        thresholdChars: 23000
         headChars: 4096
         tailChars: 1024
 
