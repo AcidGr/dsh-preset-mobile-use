@@ -35,7 +35,7 @@ Agent 自动在后台独立副屏中拉起系统便签、选择系统画笔、�
 
 1. **强依赖 KSU 底座模块**：
    - 本预设必须配合底层驱动模块 **[agent-mobile-use](https://github.com/AcidGr/agent-mobile-use)** 一起使用；
-   - 必须先在手机上通过 **KernelSU / APatch / Magisk** 刷入 `agent-mobile-use-ksu-v3.5.zip`，并保持后台 `vd_server` 网关服务运行（默认监听 `http://127.0.0.1:3070`）。
+   - 必须先在手机上通过 **KernelSU / APatch / Magisk** 刷入 `agent-mobile-use-ksu-v3.9.zip`，并保持后台 `vd_server` 网关服务运行（默认监听 `http://127.0.0.1:3070`）。
 2. **手机环境要求**：
    - **操作系统**：Android 15 / Android 16（实测实验环境基于 ColorOS 16，Linux 6.12 内核）；
    - **Root 与 Xposed**：手机必须拥有完整的 Root 特权，并建议启用 **LSPosed** 挂载模块内的隐形补丁以实现跨屏焦点隔离与免软键盘弹窗。
@@ -64,7 +64,7 @@ Agent 自动在后台独立副屏中拉起系统便签、选择系统画笔、�
 | 工具名称 | 功能描述 |
 | :--- | :--- |
 | `mobile_status` | 查询当前副屏运行状态、Display ID、宽度、高度与 DPI 参数 |
-| `mobile_screenshot` | 截取副屏高精度 PNG 图像并自动执行滑动窗口上下文压缩 |
+| `mobile_screenshot` | 截取副屏高分辨率快照（1/3 降采样 JPEG q92）并自动执行滑动窗口上下文压缩 |
 | `mobile_dump_ui` | 获取当前副屏结构化控件树与可点击节点中心绝对坐标 |
 | `mobile_click` | 向指定 `(x, y)` 发送物理触控点击事件 |
 | `mobile_swipe` | 模拟平滑滑动手势、复杂手绘线条或长按操作 |
@@ -130,7 +130,7 @@ The entire drawing sequence was executed silently in the background virtual disp
 
 1. **Underlying KSU Module Dependency**:
    - Requires the companion low-level driver module: **[agent-mobile-use](https://github.com/AcidGr/agent-mobile-use)**.
-   - You must first flash `agent-mobile-use-ksu-v3.5.zip` via **KernelSU / APatch / Magisk** on your Android device and ensure the background `vd_server` gateway is active (default: `http://127.0.0.1:3070`).
+   - You must first flash `agent-mobile-use-ksu-v3.9.zip` via **KernelSU / APatch / Magisk** on your Android device and ensure the background `vd_server` gateway is active (default: `http://127.0.0.1:3070`).
 2. **Target Device Environment**:
    - **OS**: Android 15 / 16 (Verified on ColorOS 16, Linux Kernel 6.12);
    - **Root & LSPosed**: Full Root privileges required; LSPosed recommended for window manager focus isolation and soft keyboard suppression.

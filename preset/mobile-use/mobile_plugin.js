@@ -83,15 +83,30 @@ const MAX_DELIVERED_LONG_EDGE = 1302;
  *
  * This buffer is what the request carries, every request, for as long as the screenshot
  * stays the newest one — the harness passes a clean JPEG through byte-identically, so its
- * size is the request size. Measured against the real screen, on this display:
+ * size is the request size.
  *
- *   resize -> PNG              47.24 dB   583 KB  (777 KB once base64'd)
- *   resize -> JPEG q92         41.02 dB    60 KB  ( 81 KB once base64'd)
- *   resize -> JPEG q95         42.00 dB    85 KB  (114 KB once base64'd)
+ * QUALITY, measured against the real screen: PNG 47.24 dB, JPEG q92 41.02 dB, q95 42.00 dB,
+ * q85 39.60 dB. q92 is the chosen point: the agent reads UI off this buffer to decide where
+ * to tap, and 41 dB keeps small text legible where q85 starts to soften it. Raising the
+ * gateway's own JPEG quality instead buys almost nothing (q85 -> q95 was worth +0.11 dB)
+ * because this second encode dominates the loss, so the daemon is left at q85.
  *
- * q92 is the chosen point: ~9.6x less to upload per request for a few dB of softness that
- * the agent still reads UI at. Raising the gateway's own JPEG quality instead buys almost
- * nothing (q85 -> q95 was worth +0.11 dB), because the second encode dominates the loss.
+ * SIZE, measured by re-encoding the 287 real screenshots this tool has delivered, under the
+ * pi-ai/cliproxyapi request limits that decide what actually goes on the wire (maxPixels
+ * 4194304, maxBytes 1 MiB). Base64 bytes of ONE screenshot in ONE request, medians:
+ *
+ *   full-res 1272x2800 PNG, as delivered before the downscale landed   432 KB
+ *     (the harness itself re-encodes any request image over 1 MiB down to <= 1 MiB, so the
+ *      ~2 MB PNG a heavy screen produces never crossed the wire at its stored size)
+ *   + downscale to 424x933 PNG                                         163 KB   (2.79x)
+ *   + JPEG q92 instead of PNG                                           90 KB   (1.83x)
+ *   end to end, 432 KB -> 90 KB                                        5.01x
+ *
+ * The spread is wide and it is not a rounding detail: per frame this ranges 2.77x to 10.04x,
+ * because PNG is already good at flat UI (the JPEG step alone measured 1.24x there) while a
+ * wallpaper-heavy screen measured 9.7x. Do not quote a single frame as "the" gain — the
+ * heaviest frame in this corpus is 9.66x on the JPEG step alone, and quoting it would
+ * overstate the change by more than 5x against the median.
  */
 const DELIVERED_JPEG_QUALITY = 92;
 
