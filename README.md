@@ -80,12 +80,12 @@ Agent 自动在后台独立副屏中拉起系统便签、选择系统画笔、�
 ### 安装与使用方法
 
 1. **下载预设包**：
-   从本仓库的 `release/` 目录或 GitHub Releases 页面下载 `dsh-preset-mobile-use.zip`（仅约 9 KB）。
+   从本仓库的 `release/` 目录或 GitHub Releases 页面下载 `dsh-preset-mobile-use.zip`（约 17 KB）。
 2. **解压安装**：
-   将压缩包内的 `mobile-use` 文件夹解压至手机中 DSH 的预设存放目录：
+   包内的顶层目录是 `preset/`，而 DSH 只认 `.agent-presets/mobile-use/` —— 直接把包解到 `.agent-presets/` 会得到 `.agent-presets/preset/mobile-use/`，DSH 永远找不到它。所以要用 `-j` 剥掉那一层：
    ```sh
-   mkdir -p ${DSH_HOME:-$HOME/.dsh}/.agent-presets/
-   unzip dsh-preset-mobile-use.zip -d ${DSH_HOME:-$HOME/.dsh}/.agent-presets/
+   mkdir -p ${DSH_HOME:-$HOME/.dsh}/.agent-presets/mobile-use/
+   unzip -j dsh-preset-mobile-use.zip 'preset/mobile-use/*' -d ${DSH_HOME:-$HOME/.dsh}/.agent-presets/mobile-use/
    ```
 3. **启动会话**：
    刷新或重新打开 DSH Web 界面（`http://127.0.0.1:3080`），在右上角预设选择器中切换为 **`mobile-use`**，即可直接开始指挥手机执行自动化任务！
@@ -155,10 +155,10 @@ The entire drawing sequence was executed silently in the background virtual disp
 ### Preset Installation
 
 1. Download `dsh-preset-mobile-use.zip` from `release/` or GitHub Releases.
-2. Extract the `mobile-use` folder into your DSH presets directory:
+2. The archive's top level is `preset/`, but DSH only reads `.agent-presets/mobile-use/` — extracting it straight into `.agent-presets/` yields `.agent-presets/preset/mobile-use/`, which DSH never looks at. Strip that level with `-j`:
    ```sh
-   mkdir -p ${DSH_HOME:-$HOME/.dsh}/.agent-presets/
-   unzip dsh-preset-mobile-use.zip -d ${DSH_HOME:-$HOME/.dsh}/.agent-presets/
+   mkdir -p ${DSH_HOME:-$HOME/.dsh}/.agent-presets/mobile-use/
+   unzip -j dsh-preset-mobile-use.zip 'preset/mobile-use/*' -d ${DSH_HOME:-$HOME/.dsh}/.agent-presets/mobile-use/
    ```
 3. Open the DSH Web UI (`http://127.0.0.1:3080`), select **`mobile-use`** from the preset dropdown in the top right, and start prompting!
 
