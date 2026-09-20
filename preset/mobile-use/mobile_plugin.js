@@ -200,7 +200,7 @@ export function apply(ctx) {
 	// 4. mobile_click
 	ctx.tools.register(defineTool({
 		name: "mobile_click",
-		description: "Tap at absolute pixel coordinates (x, y). Coordinates are only valid for the screen state of the LATEST observation: take them from `tap` when the node carries one, otherwise compute the centre as [(left+right)/2, (top+bottom)/2] from its `b`, using a fresh mobile_dump_ui result — never reuse coordinates after anything changed the screen. If a tap appears to have no effect, re-observe instead of tapping the same point again. THERE ARE TWO DELIVERY CHANNELS AND NO AUTOMATIC FALLBACK BETWEEN THEM: each call is exactly one click on exactly one channel. `via:\"a11y\"` (the default) activates the accessibility node at that point with performAction; `via:\"coord\"` injects a real touch event. Both are known to move the input method to the virtual display, which collapses a soft keyboard the user has open on the physical screen — so do NOT assume the accessibility channel is invisible to them. The difference is narrower: only the coordinate tap ALSO cancels an in-flight user gesture. The reply reports what actually happened: `success` plus `via`, and on success `label`/`type`/`bounds`/`vid` describe the node that was activated. An EMPTY `label` with a `type` and `bounds` is a HIT on a node that carries no text (very common in apps like Meituan), not a miss. On failure read `error` and `side_effect` together, because the two failures have opposite consequences: `side_effect:false` means performAction was never called, the screen is untouched, and retrying with via:\"coord\" is safe; `side_effect:true` means an action WAS dispatched and refused, so do NOT retry blindly — dump the screen first. Note what can NOT be done this way: canvas-drawn UI with no accessible nodes (use via:\"coord\" there), and swipes — mobile_swipe always injects a real touch.",
+		description: "Tap at absolute pixel coordinates (x, y) on the target display. Coordinates are only valid for the screen state of the LATEST observation: take them from `tap` when the node carries one, otherwise compute the centre as [(left+right)/2, (top+bottom)/2] from its `b`, using a fresh mobile_dump_ui result — never reuse coordinates after anything changed the screen. If a tap appears to have no effect, re-observe instead of tapping the same point again.",
 		parameters: {
 			x: {
 				type: "integer",
@@ -212,35 +212,17 @@ export function apply(ctx) {
 				required: true,
 				description: "Y coordinate (0 to screen height)",
 			},
-			via: {
-				type: "string",
-				enum: ["a11y", "coord"],
-				description: "Which single channel delivers this one click. `a11y` (default): performAction on the accessibility node at that point; injects no touch event, so it cannot cancel the user's gesture, but it still collapses their soft keyboard. It FAILS LOUDLY when there is no actionable node — it never silently switches to injecting a touch. `coord`: inject a real touch event directly; use this for canvas-drawn UI with no accessible nodes, and accept that it can also cancel the user's in-flight gesture.",
-			},
 		},
 		output: {
 			schema: { type: "string" },
 			render: (_args, val) => [{ type: "text", text: val }],
 		},
 		async execute(args) {
-			const body = { x: args.x, y: args.y };
-			if (args.via) body.via = args.via;
-			const res = await postJson("/api/click", body);
+			const res = await postJson("/api/click", { x: args.x, y: args.y });
 			if (!res.success) {
-				throw new Error(
-					`Click failed via ${res.via || "a11y"}: ${res.error || res.message || "unknown error"}` +
-					(res.side_effect === false
-						? ` — nothing was clicked and the screen is unchanged${res.hint ? `; ${res.hint}` : ""}`
-						: res.side_effect === true
-							? ` — an action WAS dispatched and refused, so do not retry blindly: dump the screen first${res.hint ? ` (${res.hint})` : ""}`
-							: "")
-				);
+				throw new Error(`Click failed: ${res.message || "unknown error"}`);
 			}
-			const what = res.via === "a11y"
-				? `via accessibility performAction on ${res.label ? `"${res.label}"` : `an unlabelled ${res.type || "node"}`}` +
-					`${res.bounds ? ` at [${res.bounds.join(",")}]` : ""}${res.vid ? ` (${res.vid})` : ""} — no touch event was injected, so this cannot have cancelled your gesture; it does still move the input method here`
-				: `via an INJECTED coordinate tap — a real touch event, which can interrupt the user's gesture or collapse their soft keyboard`;
-			return `Tapped (${args.x}, ${args.y}) ${what}. The screen has changed or is changing — run mobile_dump_ui again to see the result before the next action.`;
+			return `Tapped (${args.x}, ${args.y}). The screen has changed or is changing — run mobile_dump_ui again to see the result before the next action.`;
 		},
 	}));
 
