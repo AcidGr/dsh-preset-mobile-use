@@ -186,6 +186,13 @@ export function apply(ctx) {
 				const errText = await resp.text();
 				throw new Error(`Screenshot failed (HTTP ${resp.status}): ${errText}`);
 			}
+			// The gateway answers with the daemon's cached frame (JPEG) whenever it has
+			// one, and falls back to screencap (PNG) otherwise, so the media type has to
+			// travel with the bytes. This matters on the path below where sharp is
+			// unavailable and the response is attached untouched — a JPEG declared as
+			// image/png would be rejected by the provider.
+			let mediaType = (resp.headers.get("content-type") || "image/png").split(";")[0].trim();
+			if (mediaType !== "image/jpeg") mediaType = "image/png";
 			let buf = Buffer.from(await resp.arrayBuffer());
 			// Downscale before the harness ever encodes the image for the provider. A
 			// delivered long edge at or below MAX_DELIVERED_LONG_EDGE is passed through
@@ -218,6 +225,11 @@ export function apply(ctx) {
 				// than claiming a factor the delivered image may not honour.
 				delivery = undefined;
 			}
+			// The downscaled branch re-encodes through sharp, so its output is always PNG
+			// no matter what the gateway sent; only the pass-through case keeps the
+			// server's format.
+			if (delivery && delivery.divisor > 1) mediaType = "image/png";
+
 			const attachments = ctx.get("attachments");
 			if (attachments) {
 				// Evict/offload older historical images from the session so only the latest screenshot stays in context
@@ -260,8 +272,8 @@ export function apply(ctx) {
 
 				const ref = await attachments.saveImage({
 					data: buf,
-					mediaType: "image/png",
-					name: "mobile_screenshot.png",
+					mediaType,
+					name: mediaType === "image/jpeg" ? "mobile_screenshot.jpg" : "mobile_screenshot.png",
 				});
 				return {
 					message: `${screenshotScaleText(delivery)} Historical images offloaded.`,
