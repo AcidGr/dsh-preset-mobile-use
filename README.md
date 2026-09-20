@@ -90,6 +90,13 @@ Agent 自动在后台独立副屏中拉起系统便签、选择系统画笔、�
 3. **启动会话**：
    刷新或重新打开 DSH Web 界面（`http://127.0.0.1:3080`），在右上角预设选择器中切换为 **`mobile-use`**，即可直接开始指挥手机执行自动化任务！
 
+> **开发这个仓库的人注意**：DSH 加载的是 `${DSH_HOME:-$HOME/.dsh}/.agent-presets/mobile-use/`，那是本仓库 `preset/mobile-use/` 的一份**拷贝**，不是软链 —— 只改仓库不会生效。改完请执行：
+> ```sh
+> ./install.sh     # 先做真加载检查，不通过就拒绝安装、一个字节都不写
+> ```
+> `check-preset.mjs` 会真正 import 插件、跑一遍 `apply()`、并按 DSH 的规则校验每个已注册的工具。**不要用 `node --check` 代替它**：对含 `import` 的文件它按 CommonJS 解析，真语法错误也会返回 0。装进去一份加载不了的插件会让 DSH **无法恢复该工作区的任何会话**（`preset "mobile-use" failed to mount`）。
+> 装完后 `agent.cordis.yml` 即时生效；`mobile_plugin.js` 要重启 DSH 才会重新挂载。
+
 ---
 
 <a name="english"></a>
@@ -154,6 +161,10 @@ The entire drawing sequence was executed silently in the background virtual disp
    unzip dsh-preset-mobile-use.zip -d ${DSH_HOME:-$HOME/.dsh}/.agent-presets/
    ```
 3. Open the DSH Web UI (`http://127.0.0.1:3080`), select **`mobile-use`** from the preset dropdown in the top right, and start prompting!
+
+> **Working on this repository?** DSH loads `${DSH_HOME:-$HOME/.dsh}/.agent-presets/mobile-use/`, a **copy** of `preset/mobile-use/` rather than a symlink, so editing the repo alone changes nothing. Run `./install.sh` after any change: it load-tests the plugin with `check-preset.mjs` and refuses to install anything that cannot mount.
+> Do not use `node --check` as that gate — on a file that uses ESM syntax it parses as CommonJS and exits 0 even on real syntax errors. Installing an unloadable plugin makes DSH unable to resume **any** session in the workspace (`preset "mobile-use" failed to mount`).
+> `agent.cordis.yml` takes effect immediately; `mobile_plugin.js` needs a DSH restart to remount.
 
 ---
 
