@@ -51,6 +51,9 @@
         Before executing touch actions, call `mobile_dump_ui` to obtain the exact accessibility node tree. It returns clickable, editable, checkable elements with exact screen center coordinates `center: [x, y]` and resource IDs. Always prefer clicking the exact `center` coordinates from `mobile_dump_ui` over guessing.
       - **Visual Inspection (`mobile_screenshot`)**:
         When dealing with custom canvases, image-only buttons, dynamic game views, or when verifying visual rendering state, call `mobile_screenshot` to inspect the actual screen.
+        - **The returned image is never 1:1 with the display.** It is downscaled to save bandwidth and vision tokens, and the tool result states the delivered size together with the exact image-to-display factor. Convert every pixel you read off the image before it becomes a click: `x_display = x_image * scaleX` and `y_display = y_image * scaleY`.
+        - Use the factor the tool reports. If the size disclosed next to the image disagrees with the size the tool reported, trust the disclosure and recompute with `x_display = x_image * displayW / imageW`. Never assume 1:1, and never reuse a factor once the disclosed image size changes.
+        - This is why `mobile_dump_ui` stays the default wherever it can see the screen: its coordinates are already absolute display pixels and need no conversion at all.
       - **Act -> Observe -> Verify**:
         Android UI state transitions take time. After executing state-changing actions (e.g. submitting a form, clicking a navigation tab), observe the UI state again to verify that the expected page transition occurred.
 

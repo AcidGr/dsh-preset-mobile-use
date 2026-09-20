@@ -33,6 +33,85 @@ function resolveDshTools() {
 
 const { defineTool } = resolveDshTools();
 
+/**
+ * Resolve an optional dependency from the DSH installation that mounted this plugin.
+ *
+ * Same candidate order as {@link resolveDshTools}. `sharp` is a native module that only
+ * resolves out of the DSH tree, and failing to find it must degrade the screenshot tool to
+ * "no downscale" rather than take the whole preset down with it.
+ */
+function resolveOptionalDependency(name) {
+	const tryLoad = (basePath) => {
+		try {
+			return createRequire(fs.realpathSync(basePath))(name);
+		} catch (e) {
+			return null;
+		}
+	};
+	for (const arg of process.argv) {
+		if (!arg) continue;
+		const mod = tryLoad(arg);
+		if (mod) return mod;
+	}
+	for (const c of ["/usr/local/bin/dsh", process.execPath, process.cwd()]) {
+		const mod = tryLoad(c);
+		if (mod) return mod;
+	}
+	return null;
+}
+
+const sharp = resolveOptionalDependency("sharp");
+
+/**
+ * Longest delivered edge that still fits the DeepSeek vision token grid at EVERY aspect
+ * ratio, so a screenshot never gets rescaled a second time behind our back.
+ *
+ * The grid bills `gridH * (gridW + 1) + 2` tokens on 14px patches with 3:1 downsampling,
+ * capped at 1024 tokens per image, and the count grows with the grid width — so a square is
+ * the worst case. 1302x1302 is the largest square the cap admits (994 tokens; a 1316 square
+ * already needs 1058), and a measured sweep over 181 aspect ratios never exceeded 994. Any
+ * image whose long edge is <= 1302 therefore reaches the model untouched whatever its shape.
+ *
+ * That pass-through is the whole point: an image the pipeline does not rescale is one whose
+ * delivered dimensions this tool can state authoritatively, instead of an unknown factor the
+ * model would otherwise have to discover by trial and error.
+ */
+const MAX_DELIVERED_LONG_EDGE = 1302;
+
+/**
+ * Pick the smallest integer divisor that brings the long edge within the pass-through limit,
+ * so the factor the model applies is a whole number it cannot misremember.
+ */
+function planScreenshotDelivery(width, height) {
+	const longEdge = Math.max(width, height);
+	let divisor = 1;
+	while (longEdge / divisor > MAX_DELIVERED_LONG_EDGE) divisor += 1;
+	return {
+		divisor,
+		width: Math.max(1, Math.round(width / divisor)),
+		height: Math.max(1, Math.round(height / divisor)),
+	};
+}
+
+/** Drop trailing zeros so a stated factor reads as `3` rather than `3.0000`. */
+function factorText(value) {
+	return String(Number(value.toFixed(4)));
+}
+
+/**
+ * State the exact image-to-display mapping in the tool result.
+ *
+ * This is the fix for the first-click failure: the model never has to infer the scale from
+ * the image envelope, and it never has to carry a remembered constant between screenshots.
+ */
+function screenshotScaleText(delivery) {
+	if (!delivery) {
+		return "Screenshot captured, but it could not be downscaled to a size the vision pipeline passes through untouched, so it may have been rescaled before you saw it. Read the image dimensions disclosed with this result and convert with x_display = x_image * displayW / imageW; do not assume the image is 1:1.";
+	}
+	const how = delivery.divisor > 1 ? `downscaled 1/${delivery.divisor}` : "not downscaled";
+	return `Screenshot captured. Display ${delivery.displayWidth}x${delivery.displayHeight} delivered as ${delivery.width}x${delivery.height} (${how}), a size the vision pipeline passes through untouched, so these are exactly the pixels you see. Convert any pixel you read off the image into a mobile_click coordinate with x_display = x_image * ${factorText(delivery.scaleX)} and y_display = y_image * ${factorText(delivery.scaleY)}. If the image dimensions disclosed with this result differ from ${delivery.width}x${delivery.height}, trust that disclosure instead and use x_display = x_image * displayW / imageW.`;
+}
+
 const SERVER_BASE = process.env.AGENT_VD_SERVER || "http://127.0.0.1:3070";
 
 async function postJson(path, body) {
@@ -83,7 +162,7 @@ export function apply(ctx) {
 	// 2. mobile_screenshot
 	ctx.tools.register(defineTool({
 		name: "mobile_screenshot",
-		description: "Capture a real-time screenshot of the Android virtual display (matching physical resolution) and return the visual image for inspection. Older screenshot images in the conversation history are automatically offloaded into lean placeholders to keep context small and response fast.",
+		description: "Capture a real-time screenshot of the target display and return it for inspection. The image is NOT 1:1 with the screen: this tool downscales it to a fixed size the vision pipeline passes through untouched, and the result text states the delivered size together with the exact image-to-display factor. Apply that factor to any pixel you read off the image before turning it into a mobile_click coordinate, and never assume the image is 1:1. Older screenshot images in the conversation history are automatically offloaded into lean placeholders to keep context small and response fast.",
 		parameters: {},
 		output: {
 			schema: {
@@ -107,7 +186,38 @@ export function apply(ctx) {
 				const errText = await resp.text();
 				throw new Error(`Screenshot failed (HTTP ${resp.status}): ${errText}`);
 			}
-			const buf = Buffer.from(await resp.arrayBuffer());
+			let buf = Buffer.from(await resp.arrayBuffer());
+			// Downscale before the harness ever encodes the image for the provider. A
+			// delivered long edge at or below MAX_DELIVERED_LONG_EDGE is passed through
+			// untouched, so the dimensions reported below are exactly the ones the model
+			// receives — which is what lets us state the factor instead of the model
+			// discovering it by tapping the wrong pixel first.
+			let delivery;
+			try {
+				const meta = sharp ? await sharp(buf).metadata() : null;
+				if (meta && meta.width > 0 && meta.height > 0) {
+					const plan = planScreenshotDelivery(meta.width, meta.height);
+					if (plan.divisor > 1) {
+						buf = await sharp(buf)
+							.resize({ width: plan.width, height: plan.height, fit: "fill" })
+							.png()
+							.toBuffer();
+					}
+					delivery = {
+						displayWidth: meta.width,
+						displayHeight: meta.height,
+						width: plan.width,
+						height: plan.height,
+						divisor: plan.divisor,
+						scaleX: meta.width / plan.width,
+						scaleY: meta.height / plan.height,
+					};
+				}
+			} catch (scaleErr) {
+				// Keep the native image and let the result text warn about scale rather
+				// than claiming a factor the delivered image may not honour.
+				delivery = undefined;
+			}
 			const attachments = ctx.get("attachments");
 			if (attachments) {
 				// Evict/offload older historical images from the session so only the latest screenshot stays in context
@@ -154,12 +264,12 @@ export function apply(ctx) {
 					name: "mobile_screenshot.png",
 				});
 				return {
-					message: `Screenshot captured successfully (1:1 PNG, ${buf.length} bytes, historical images offloaded)`,
+					message: `${screenshotScaleText(delivery)} Historical images offloaded.`,
 					attachment: ref,
 				};
 			}
 			return {
-				message: `Screenshot captured (${buf.length} bytes), attachment service unavailable.`,
+				message: `${screenshotScaleText(delivery)} The attachment service is unavailable, so the image is not in your context.`,
 			};
 		},
 	}));
