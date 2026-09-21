@@ -671,12 +671,40 @@ export function apply(ctx) {
 					completed,
 				});
 				fs.appendFileSync("/tmp/agent_notify.log", `[${new Date().toISOString()}] Posted notify: ${title}\n`);
+
+				// 任务全部完成时，自动发出停止/复位信号，将聚焦切回 background 并灭灯
+				if (isAllDone) {
+					await safeResetToBackground("Task Completed (all todos completed)");
+				}
 			}
 		} catch (err) {
 			try {
 				fs.appendFileSync("/tmp/agent_notify.log", `[${new Date().toISOString()}] Error: ${err?.stack || err}\n`);
 			} catch (_) {}
 		}
+	});
+
+	// 安全切回 background 并灭灯的统一停止/复位收口函数
+	async function safeResetToBackground(reason) {
+		try {
+			const res = await postJson("/api/mode", { mode: "background" });
+			fs.appendFileSync("/tmp/agent_notify.log", `[${new Date().toISOString()}] Reset to background triggered by: ${reason} (mode: ${res?.mode}, target_display_id: ${res?.target_display_id})\n`);
+		} catch (err) {
+			try {
+				fs.appendFileSync("/tmp/agent_notify.log", `[${new Date().toISOString()}] Failed to reset to background (${reason}): ${err?.message || err}\n`);
+			} catch (_) {}
+		}
+	}
+
+	// 失败/超时信号：Agent 发生错误或超时中断时，触发紧急安全熔断，切回 background 待机态
+	ctx.on("agent/error", async ({ agent, error }) => {
+		const errDetail = error?.message || (typeof error === "string" ? error : "Unknown error");
+		await safeResetToBackground(`Agent Error / Timeout: ${errDetail}`);
+	});
+
+	// 中止/销毁信号：会话销毁时，清理前台占用并灭灯
+	ctx.on("session/disposed", async (session) => {
+		await safeResetToBackground(`Session Disposed: ${session?.id || "unknown"}`);
 	});
 
 	// Interactive questions: pop up Heads-up Notification & Bottom Sheet card on Android
