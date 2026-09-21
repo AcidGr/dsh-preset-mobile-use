@@ -779,11 +779,27 @@ export function apply(ctx) {
 	ctx.on("user-questions/request", async (request, next) => {
 		const requestId = "req_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
 		const phoneController = new AbortController();
+		const webController = new AbortController();
 
-		// If caller's signal aborts, abort phone request and dismiss UI
-		if (request?.signal) {
-			request.signal.addEventListener("abort", () => {
+		// Combine caller signal with webController signal so we can abort the web side independently
+		const callerSignal = request?.signal;
+		let webSignal = webController.signal;
+		if (callerSignal) {
+			if (typeof AbortSignal.any === "function") {
+				webSignal = AbortSignal.any([callerSignal, webController.signal]);
+			} else {
+				callerSignal.addEventListener("abort", () => webController.abort(callerSignal.reason), { once: true });
+			}
+		}
+		if (request) {
+			request.signal = webSignal;
+		}
+
+		// If caller's signal aborts, abort both phone request and web UI
+		if (callerSignal) {
+			callerSignal.addEventListener("abort", () => {
 				phoneController.abort();
+				webController.abort();
 				postJson("/api/question/cancel", { request_id: requestId }).catch(() => {});
 			});
 		}
@@ -791,11 +807,13 @@ export function apply(ctx) {
 		// 1. Dispatch question to phone
 		const phonePromise = postJson("/api/question", {
 			request_id: requestId,
-			questions: request.questions,
+			questions: request?.questions,
 			timeout_ms: 600000,
 		}, phoneController.signal)
 			.then((res) => {
 				if (res && res.success && Array.isArray(res.answers) && res.answers.length > 0) {
+					// Phone answered! Dismiss Web UI card immediately
+					webController.abort(new Error("answered on phone"));
 					return { answers: res.answers };
 				}
 				throw new Error("phone answer empty or unsuccessful");
