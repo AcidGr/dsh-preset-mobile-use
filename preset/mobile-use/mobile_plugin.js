@@ -146,11 +146,12 @@ function screenshotScaleText(delivery) {
 
 const SERVER_BASE = process.env.AGENT_VD_SERVER || "http://127.0.0.1:3070";
 
-async function postJson(path, body) {
+async function postJson(path, body, signal) {
 	const resp = await fetch(`${SERVER_BASE}${path}`, {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(body),
+		signal,
 	});
 	if (!resp.ok) {
 		const text = await resp.text();
@@ -676,6 +677,55 @@ export function apply(ctx) {
 				fs.appendFileSync("/tmp/agent_notify.log", `[${new Date().toISOString()}] Error: ${err?.stack || err}\n`);
 			} catch (_) {}
 		}
+	});
+
+	// Interactive questions: pop up Heads-up Notification & Bottom Sheet card on Android
+	// and race with Web UI (both phone and web can answer, whichever finishes first claims it)
+	ctx.on("user-questions/request", async (request, next) => {
+		const requestId = "req_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
+		const phoneController = new AbortController();
+
+		// If caller's signal aborts, abort phone request and dismiss UI
+		if (request?.signal) {
+			request.signal.addEventListener("abort", () => {
+				phoneController.abort();
+				postJson("/api/question/cancel", { request_id: requestId }).catch(() => {});
+			});
+		}
+
+		// 1. Dispatch question to phone
+		const phonePromise = postJson("/api/question", {
+			request_id: requestId,
+			questions: request.questions,
+			timeout_ms: 600000,
+		}, phoneController.signal)
+			.then((res) => {
+				if (res && res.success && Array.isArray(res.answers) && res.answers.length > 0) {
+					return { answers: res.answers };
+				}
+				throw new Error("phone answer empty or unsuccessful");
+			})
+			.catch(() => {
+				// Phone question failed, cancelled, or offline: wait for Web UI
+				return new Promise(() => {});
+			});
+
+		// 2. Delegate to Web UI as concurrent option
+		const webPromise = (typeof next === "function" ? next() : Promise.reject(new Error("no next handler")))
+			.then((webAnswer) => {
+				// Web answered! Dismiss phone notification and card
+				phoneController.abort();
+				postJson("/api/question/cancel", { request_id: requestId }).catch(() => {});
+				return webAnswer;
+			})
+			.catch((err) => {
+				phoneController.abort();
+				postJson("/api/question/cancel", { request_id: requestId }).catch(() => {});
+				throw err;
+			});
+
+		// Race between phone and web
+		return await Promise.race([phonePromise, webPromise]);
 	});
 }
 
