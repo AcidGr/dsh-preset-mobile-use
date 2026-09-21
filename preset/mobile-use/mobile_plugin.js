@@ -615,6 +615,63 @@ export function apply(ctx) {
 		},
 	}));
 
+	// Report tool execution events to Go gateway for real-time monitoring
+	ctx.on("tools/execute", async (exec, next) => {
+		try {
+			const toolName = exec?.name || "tool";
+			const rawArgs = exec?.arguments ?? exec?.args ?? exec?.input ?? {};
+			let summary = "";
+			try {
+				if (typeof rawArgs === "object" && rawArgs !== null) {
+					if (rawArgs.command) summary = String(rawArgs.command).slice(0, 80);
+					else if (rawArgs.text) summary = `"${String(rawArgs.text).slice(0, 60)}"`;
+					else if (rawArgs.x !== undefined && rawArgs.y !== undefined) summary = `(${rawArgs.x}, ${rawArgs.y})`;
+					else if (rawArgs.package) summary = String(rawArgs.package);
+					else if (rawArgs.key) summary = String(rawArgs.key);
+					else summary = JSON.stringify(rawArgs).slice(0, 80);
+				} else if (typeof rawArgs === "string") {
+					summary = rawArgs.slice(0, 80);
+				}
+			} catch (_) {}
+
+			postJson("/api/task_event", {
+				type: "tool_start",
+				tool: toolName,
+				summary,
+				timestamp: Date.now(),
+			}).catch(() => {});
+		} catch (_) {}
+
+		const startTime = Date.now();
+		try {
+			const res = await next();
+			try {
+				const duration = Date.now() - startTime;
+				postJson("/api/task_event", {
+					type: "tool_end",
+					tool: exec?.name || "tool",
+					success: true,
+					duration_ms: duration,
+					timestamp: Date.now(),
+				}).catch(() => {});
+			} catch (_) {}
+			return res;
+		} catch (err) {
+			try {
+				const duration = Date.now() - startTime;
+				postJson("/api/task_event", {
+					type: "tool_end",
+					tool: exec?.name || "tool",
+					success: false,
+					error: err?.message || String(err),
+					duration_ms: duration,
+					timestamp: Date.now(),
+				}).catch(() => {});
+			} catch (_) {}
+			throw err;
+		}
+	});
+
 	// Auto status notification: sync todo_write progress silently to Android status bar (BigText style)
 	ctx.on("tools/result", async (exec, result) => {
 		try {
@@ -700,11 +757,21 @@ export function apply(ctx) {
 	ctx.on("agent/error", async ({ agent, error }) => {
 		const errDetail = error?.message || (typeof error === "string" ? error : "Unknown error");
 		await safeResetToBackground(`Agent Error / Timeout: ${errDetail}`);
+		postJson("/api/task_event", {
+			type: "agent_error",
+			error: errDetail,
+			timestamp: Date.now(),
+		}).catch(() => {});
 	});
 
 	// 中止/销毁信号：会话销毁时，清理前台占用并灭灯
 	ctx.on("session/disposed", async (session) => {
 		await safeResetToBackground(`Session Disposed: ${session?.id || "unknown"}`);
+		postJson("/api/task_event", {
+			type: "session_disposed",
+			session_id: session?.id,
+			timestamp: Date.now(),
+		}).catch(() => {});
 	});
 
 	// Interactive questions: pop up Heads-up Notification & Bottom Sheet card on Android
