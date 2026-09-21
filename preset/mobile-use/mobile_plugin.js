@@ -729,9 +729,16 @@ export function apply(ctx) {
 				});
 				fs.appendFileSync("/tmp/agent_notify.log", `[${new Date().toISOString()}] Posted notify: ${title}\n`);
 
-				// 任务全部完成时，自动发出停止/复位信号，将聚焦切回 background 并灭灯
+				let lastTodoInfo = null;
 				if (isAllDone) {
-					await safeResetToBackground("Task Completed (all todos completed)");
+					lastTodoInfo = { title, content, total, completed };
+					await safeResetToBackground("Task Completed (all todos completed)", {
+						title,
+						content,
+						total,
+						completed,
+						notify: true,
+					});
 				}
 			}
 		} catch (err) {
@@ -741,8 +748,10 @@ export function apply(ctx) {
 		}
 	});
 
-	// 安全切回 background 并灭灯的统一停止/复位收口函数
-	async function safeResetToBackground(reason) {
+	let lastCompletionNotifyTime = 0;
+
+	// 安全切回 background 并灭灯的统一停止/复位收口函数（主屏焦点回收到副屏，并触发完成通知）
+	async function safeResetToBackground(reason, opts = {}) {
 		try {
 			const res = await postJson("/api/mode", { mode: "background" });
 			fs.appendFileSync("/tmp/agent_notify.log", `[${new Date().toISOString()}] Reset to background triggered by: ${reason} (mode: ${res?.mode}, target_display_id: ${res?.target_display_id})\n`);
@@ -751,7 +760,49 @@ export function apply(ctx) {
 				fs.appendFileSync("/tmp/agent_notify.log", `[${new Date().toISOString()}] Failed to reset to background (${reason}): ${err?.message || err}\n`);
 			} catch (_) {}
 		}
+
+		// 核心收口：在完成信号处统一触发绿色大鲸鱼高优完成通知（彻底解绑对 todo list 的单一依赖）
+		if (opts.notify === true) {
+			const now = Date.now();
+			if (now - lastCompletionNotifyTime > 1500) {
+				lastCompletionNotifyTime = now;
+				try {
+					const title = opts.title || "[Mobile Agent] 任务已全部完成";
+					const content = opts.content || "所有执行事项均已处理完毕";
+					const total = typeof opts.total === "number" ? opts.total : 0;
+					const completed = typeof opts.completed === "number" ? opts.completed : 0;
+
+					await postJson("/api/notify", {
+						title,
+						content,
+						tag: "dsh_agent",
+						total,
+						completed,
+						is_completed: true,
+					});
+					fs.appendFileSync("/tmp/agent_notify.log", `[${new Date().toISOString()}] Sent completion notification via reset signal: ${title}\n`);
+				} catch (err) {
+					try {
+						fs.appendFileSync("/tmp/agent_notify.log", `[${new Date().toISOString()}] Failed to send completion notification: ${err?.message || err}\n`);
+					} catch (_) {}
+				}
+			}
+		}
 	}
+
+	// 核心全局生命周期：监听 Agent 状态从 running 切换到 idle/ready（单轮问答、执行或指令彻底结束）
+	let agentIsRunning = false;
+	ctx.on("agent/status", async ({ agent, status }) => {
+		if (status === "running") {
+			agentIsRunning = true;
+		} else if ((status === "idle" || status === "ready") && agentIsRunning) {
+			agentIsRunning = false;
+			// 触发完成信号：切回副屏，熄灭前台光效，并发送完成通知
+			await safeResetToBackground(`Agent Turn Completed (status: ${status})`, {
+				notify: true,
+			});
+		}
+	});
 
 	// 失败/超时信号：Agent 发生错误或超时中断时，触发紧急安全熔断，切回 background 待机态
 	ctx.on("agent/error", async ({ agent, error }) => {
