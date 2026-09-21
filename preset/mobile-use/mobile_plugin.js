@@ -175,7 +175,7 @@ export function apply(ctx) {
 	// 1. mobile_status
 	ctx.tools.register(defineTool({
 		name: "mobile_status",
-		description: "Get the current running status and display metrics of the Android Virtual Display subsystem.",
+		description: "Get current display metrics and system status.",
 		parameters: {},
 		output: {
 			schema: { type: "string" },
@@ -194,7 +194,7 @@ export function apply(ctx) {
 	// 2. mobile_screenshot
 	ctx.tools.register(defineTool({
 		name: "mobile_screenshot",
-		description: "Capture a real-time screenshot of the target display and return it for inspection. The image is NOT 1:1 with the screen: this tool downscales it to a fixed size the vision pipeline passes through untouched, and the result text states the delivered size together with the exact image-to-display factor. Apply that factor to any pixel you read off the image before turning it into a mobile_click coordinate, and never assume the image is 1:1. Older screenshot images in the conversation history are automatically offloaded into lean placeholders to keep context small and response fast.",
+		description: "Capture a screenshot of the target display.",
 		parameters: {},
 		output: {
 			schema: {
@@ -321,7 +321,7 @@ export function apply(ctx) {
 	// 3. mobile_dump_ui
 	ctx.tools.register(defineTool({
 		name: "mobile_dump_ui",
-		description: "Inspect the current screen's accessibility tree as one line per element. Reads the DEFAULT observation tool: its coordinates are already absolute display pixels. Format: a status line, then a `# ...` line naming the columns once, then one row per element: `id type \"name\" x1,y1,x2,y2 flags [optional fields]`. A row is splittable on whitespace; free-text fields always come last and are quoted. `name` is the richer of text/content-desc, and may be absent when the app gives neither. Map `id` to a click target; `target=ID@x,y` fields just below a row point at a clickable ancestor's centre for labels that are not tappable themselves. Flags: c=clickable e=editable s=scrollable k+=checked/selected k-=unchecked off=disabled gone=offscreen focus=focused wN=window dN=depth. Optional: `d=` extra content-desc, `id=` resource, `how=` WHY the row has no name (unlabeled=try it, wraps=it only wraps a tappable child, so prefer the child, scrollonly, offscreen, disabled), `hint=` an input's placeholder, `tip=` a tooltip. Rows are ordered most useful first, and that order is the only statement of tier; every actionable node is present unless the status line reports `truncated=1`. Read the status line before the rows: `returned` rows, `act_sent/act_total` actionable delivered vs present, `truncated=1` (with `omitted` count; `omitted_top=1` means real controls were cut off), `no_windows=1` or `tree_blocked=1` (a scan failure, not an empty screen: retry, and check `recovered=1` on a later call), `x_extent`/`y_extent` when content reaches outside the screen. Prefer this over `mobile_screenshot` wherever it can see the screen; turn to a screenshot for canvas-drawn UI (maps, drawing), image-only content, and whenever a dump's status line looks wrong.",
+		description: "Inspect the screen accessibility hierarchy and element coordinates.",
 		parameters: {},
 		output: {
 			schema: { type: "string" },
@@ -358,21 +358,21 @@ export function apply(ctx) {
 	// 4. mobile_click
 	ctx.tools.register(defineTool({
 		name: "mobile_click",
-		description: "Tap or long-press at absolute pixel coordinates (x, y) on the target display. Omit duration_ms for a standard single tap; pass duration_ms (e.g. 500~1500) for a long press (useful for opening context menus, selecting text/messages, or press-and-hold interactions). Coordinates are only valid for the screen state of the LATEST observation: take them from `tap` when the node carries one, otherwise compute the centre as [(left+right)/2, (top+bottom)/2] from its `b`, using a fresh mobile_dump_ui result — never reuse coordinates after anything changed the screen. If a tap appears to have no effect, re-observe instead of tapping the same point again.",
+		description: "Tap or long-press at (x, y) coordinates.",
 		parameters: {
 			x: {
 				type: "integer",
 				required: true,
-				description: "X coordinate (0 to screen width)",
+				description: "X coordinate in pixels.",
 			},
 			y: {
 				type: "integer",
 				required: true,
-				description: "Y coordinate (0 to screen height)",
+				description: "Y coordinate in pixels.",
 			},
 			duration_ms: {
 				type: "integer",
-				description: "Optional press duration in milliseconds. Omit for standard instantaneous single tap (~50ms); pass 500~1500 for a long press (e.g. context menu, item selection, or hold action).",
+				description: "Press duration in milliseconds for long press. Omit for standard tap.",
 			},
 		},
 		output: {
@@ -399,13 +399,13 @@ export function apply(ctx) {
 	// 5. mobile_swipe
 	ctx.tools.register(defineTool({
 		name: "mobile_swipe",
-		description: "Perform a touch swipe gesture from (x1, y1) to (x2, y2) on the Android virtual display. Useful for scrolling lists, page transitions, or drag interactions.",
+		description: "Perform a touch swipe gesture from (x1, y1) to (x2, y2).",
 		parameters: {
-			x1: { type: "integer", required: true, description: "Starting X coordinate" },
-			y1: { type: "integer", required: true, description: "Starting Y coordinate" },
-			x2: { type: "integer", required: true, description: "Ending X coordinate" },
-			y2: { type: "integer", required: true, description: "Ending Y coordinate" },
-			duration_ms: { type: "integer", description: "Duration of swipe in milliseconds (default: 300)" },
+			x1: { type: "integer", required: true, description: "Starting X coordinate." },
+			y1: { type: "integer", required: true, description: "Starting Y coordinate." },
+			x2: { type: "integer", required: true, description: "Ending X coordinate." },
+			y2: { type: "integer", required: true, description: "Ending Y coordinate." },
+			duration_ms: { type: "integer", description: "Duration in milliseconds (default: 300)." },
 		},
 		output: {
 			schema: { type: "string" },
@@ -431,12 +431,20 @@ export function apply(ctx) {
 	// 6. mobile_type
 	ctx.tools.register(defineTool({
 		name: "mobile_type",
-		description: "Silently inject text into the currently focused input field on the virtual display via clipboard paste. Supports Chinese, long sentences, numbers, and special characters without popping up soft keyboards on Display 0.",
+		description: "Type text into an input field by target ID or focus.",
 		parameters: {
 			text: {
 				type: "string",
 				required: true,
-				description: "The text content to input/paste",
+				description: "Text content to type.",
+			},
+			target: {
+				type: "string",
+				description: "Target element ID or resource ID. Omit to type into focused element.",
+			},
+			submit: {
+				type: "boolean",
+				description: "Whether to press ENTER after typing. Default: false.",
 			},
 		},
 		output: {
@@ -444,11 +452,30 @@ export function apply(ctx) {
 			render: (_args, val) => [{ type: "text", text: val }],
 		},
 		async execute(args) {
-			const res = await postJson("/api/type", { text: args.text });
+			const payload = {
+				text: args.text,
+				target: args.target !== undefined ? String(args.target) : "focused",
+				submit: Boolean(args.submit),
+			};
+			const res = await postJson("/api/type", payload);
 			if (!res.success) {
 				throw new Error(`Text input failed: ${res.message || "unknown error"}`);
 			}
-			const resultText = `Injected text: "${args.text}"`;
+			let resultText = "";
+			if (typeof res.message === "string" && res.message.startsWith("{")) {
+				try {
+					const parsed = JSON.parse(res.message);
+					if (parsed.ok) {
+						resultText = `Text injected successfully [mode=${parsed.mode || "set_text"}, verified="${parsed.verified_text || args.text}", cost=${parsed.cost_ms}ms]`;
+					} else {
+						resultText = `Text injection warning: ${parsed.error || "unverified"}`;
+					}
+				} catch (_) {
+					resultText = `Injected text: "${args.text}"`;
+				}
+			} else {
+				resultText = `Injected text: "${args.text}"`;
+			}
 			return res.notice ? `${res.notice}\n${resultText}` : resultText;
 		},
 	}));
@@ -456,12 +483,12 @@ export function apply(ctx) {
 	// 7. mobile_press_key
 	ctx.tools.register(defineTool({
 		name: "mobile_press_key",
-		description: "Inject a key event into the Android virtual display. Supports standard key names (BACK, HOME, ENTER, TAB, SPACE, DELETE, APP_SWITCH) or numeric keycodes (e.g. 4 for BACK, 66 for ENTER).",
+		description: "Press a navigation or hardware key (e.g. BACK, HOME, ENTER).",
 		parameters: {
 			key: {
 				type: "string",
 				required: true,
-				description: "Key name (BACK, HOME, ENTER, TAB, SPACE, DELETE, APP_SWITCH) or integer keycode",
+				description: "Key name (BACK, HOME, ENTER, TAB, SPACE, DELETE, APP_SWITCH) or keycode.",
 			},
 		},
 		output: {
@@ -481,11 +508,11 @@ export function apply(ctx) {
 	// 7.5. mobile_wait
 	ctx.tools.register(defineTool({
 		name: "mobile_wait",
-		description: "Pause execution for a specified duration in milliseconds to wait for page transitions, asynchronous network loading, skeleton screens, or animations to finish before the next observation.",
+		description: "Wait for a specified duration in milliseconds.",
 		parameters: {
 			duration_ms: {
 				type: "integer",
-				description: "Duration to wait in milliseconds (default: 1000, max: 10000)",
+				description: "Duration to wait in milliseconds (default: 1000).",
 			},
 		},
 		output: {
@@ -502,16 +529,16 @@ export function apply(ctx) {
 	// 8. mobile_launch_app
 	ctx.tools.register(defineTool({
 		name: "mobile_launch_app",
-		description: "Launch an Android application on the virtual display by its package name or component name.",
+		description: "Launch an Android application by package name or component.",
 		parameters: {
 			package: {
 				type: "string",
 				required: true,
-				description: "Package name (e.g. com.android.settings, com.sankuai.meituan)",
+				description: "Android application package name.",
 			},
 			activity: {
 				type: "string",
-				description: "Optional specific Activity name",
+				description: "Optional Activity component name.",
 			},
 		},
 		output: {
@@ -534,12 +561,12 @@ export function apply(ctx) {
 	// 9. mobile_shell
 	ctx.tools.register(defineTool({
 		name: "mobile_shell",
-		description: "Execute a high-privilege Android root shell command in the Android system environment. Use this for fast non-visual CLI tasks (e.g. SQLite database queries, inspecting packages with pm, querying system services with dumpsys, curl HTTP calls, am broadcast) which should ALWAYS be prioritized over visual GUI operations when available.",
+		description: "Execute a root shell command in the Android system.",
 		parameters: {
 			command: {
 				type: "string",
 				required: true,
-				description: "The shell command to execute in Android environment",
+				description: "Shell command to execute.",
 			},
 		},
 		output: {
@@ -566,12 +593,12 @@ export function apply(ctx) {
 	// 10. mobile_switch_mode
 	ctx.tools.register(defineTool({
 		name: "mobile_switch_mode",
-		description: "Switch the target display mode between foreground (Display 0, physical screen) and background (virtual display, headless isolated screen). All subsequent mobile actions (click, type, dump_ui, screenshot, launch) will target the chosen display.",
+		description: "Switch target display between foreground (physical screen) and background (virtual display).",
 		parameters: {
 			mode: {
 				type: "string",
 				required: true,
-				description: "Target mode: 'foreground' (or 'fg' / '0') for main physical screen, 'background' (or 'bg') for virtual display.",
+				description: "Target display mode: 'foreground' (physical screen) or 'background' (virtual display).",
 			},
 		},
 		output: {
