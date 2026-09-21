@@ -720,25 +720,15 @@ export function apply(ctx) {
 				const divider = "────────────";
 				const content = `${header}\n${divider}\n${lines.join("\n")}`;
 
-				await postJson("/api/notify", {
-					title,
-					content,
-					tag: "dsh_agent",
-					total,
-					completed,
-				});
-				fs.appendFileSync("/tmp/agent_notify.log", `[${new Date().toISOString()}] Posted notify: ${title}\n`);
-
-				let lastTodoInfo = null;
+				// 仅在任务未全部完成时静默记录待办状态，彻底不发送完成通知
+				// 如果任务全部完成，暂存最后的待办汇总信息，供 Agent Turn 结束时统一消费
 				if (isAllDone) {
-					lastTodoInfo = { title, content, total, completed };
-					await safeResetToBackground("Task Completed (all todos completed)", {
-						title,
+					cachedLastTodoSummary = {
+						title: `[Mobile Agent] 任务已全部完成 (${completed}/${total})`,
 						content,
 						total,
 						completed,
-						notify: true,
-					});
+					};
 				}
 			}
 		} catch (err) {
@@ -749,6 +739,7 @@ export function apply(ctx) {
 	});
 
 	let lastCompletionNotifyTime = 0;
+	let cachedLastTodoSummary = null;
 
 	// 安全切回 background 并灭灯的统一停止/复位收口函数（主屏焦点回收到副屏，并触发完成通知）
 	async function safeResetToBackground(reason, opts = {}) {
@@ -797,8 +788,15 @@ export function apply(ctx) {
 			agentIsRunning = true;
 		} else if ((status === "idle" || status === "ready") && agentIsRunning) {
 			agentIsRunning = false;
-			// 触发完成信号：切回副屏，熄灭前台光效，并发送完成通知
+			// 触发唯一完成信号：切回副屏，熄灭前台光效，并发出全局唯一的完成通知
+			const todoSummary = cachedLastTodoSummary;
+			cachedLastTodoSummary = null; // 消费后立刻清空，避免污染下一轮
+
 			await safeResetToBackground(`Agent Turn Completed (status: ${status})`, {
+				title: todoSummary?.title || "[Mobile Agent] 任务已全部完成",
+				content: todoSummary?.content || "所有执行事项均已处理完毕",
+				total: todoSummary?.total ?? 0,
+				completed: todoSummary?.completed ?? 0,
 				notify: true,
 			});
 		}
