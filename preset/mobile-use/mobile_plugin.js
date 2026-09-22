@@ -701,6 +701,7 @@ export function apply(ctx) {
 	let lastCompletionNotifyTime = 0;
 	let cachedLastTodoSummary = null;
 	let lastUserPromptSummary = "";
+	let lastAssistantMessage = "";
 
 	ctx.on("session/event", (_session, event) => {
 		try {
@@ -709,6 +710,21 @@ export function apply(ctx) {
 				if (text) {
 					const clean = text.trim().replace(/\r?\n/g, " ");
 					lastUserPromptSummary = clean.slice(0, 30);
+				}
+			} else if (event?.type === "assistant/message") {
+				const contentBlocks = event?.data?.message?.content || [];
+				const textBlocks = contentBlocks.filter((b) => b?.type === "text" && b?.text);
+				const fullText = textBlocks.map((b) => b.text).join("\n").trim();
+				if (fullText) {
+					// 过滤掉 markdown 标题符、加粗符，保留自然段落排版
+					const clean = fullText
+						.replace(/^#+\s+/gm, "")
+						.replace(/\*\*([^*]+)\*\*/g, "$1")
+						.replace(/`([^`]+)`/g, "$1")
+						.trim();
+					if (clean) {
+						lastAssistantMessage = clean;
+					}
 				}
 			}
 		} catch (_) {}
@@ -777,10 +793,13 @@ export function apply(ctx) {
 				}
 			} catch (_) {}
 
+			const finalContent = lastAssistantMessage || todoSummary?.content || "所有执行事项均已处理完毕";
+			lastAssistantMessage = "";
+
 			await safeResetToBackground(`Agent Turn Completed (status: ${status})`, {
 				title: "任务已经完成！",
 				subtext: sessionTitle || lastUserPromptSummary || "",
-				content: todoSummary?.content || "所有执行事项均已处理完毕",
+				content: finalContent,
 				total: todoSummary?.total ?? 0,
 				completed: todoSummary?.completed ?? 0,
 				notify: true,
