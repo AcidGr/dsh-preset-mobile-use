@@ -651,9 +651,7 @@ export function apply(ctx) {
 				const inProgress = todos.find((t) => t.status === "in_progress");
 
 				const isAllDone = completed === total;
-				const title = isAllDone
-					? `[Mobile Agent] 任务已全部完成 (${completed}/${total})`
-					: `[Mobile Agent] 任务进度 (${completed}/${total})`;
+				const title = "任务已经完成！";
 
 				// 顶部第一行作为焦点摘要展示（去除 >> 箭头，更加干净）
 				let header = "";
@@ -686,7 +684,7 @@ export function apply(ctx) {
 				// 如果任务全部完成，暂存最后的待办汇总信息，供 Agent Turn 结束时统一消费
 				if (isAllDone) {
 					cachedLastTodoSummary = {
-						title: `[Mobile Agent] 任务已全部完成 (${completed}/${total})`,
+						title: "任务已经完成！",
 						content,
 						total,
 						completed,
@@ -702,6 +700,19 @@ export function apply(ctx) {
 
 	let lastCompletionNotifyTime = 0;
 	let cachedLastTodoSummary = null;
+	let lastUserPromptSummary = "";
+
+	ctx.on("session/event", (_session, event) => {
+		try {
+			if (event?.type === "user/message") {
+				const text = event?.data?.content?.[0]?.text || event?.data?.text || "";
+				if (text) {
+					const clean = text.trim().replace(/\r?\n/g, " ");
+					lastUserPromptSummary = clean.slice(0, 30);
+				}
+			}
+		} catch (_) {}
+	});
 
 	// 安全切回 background 并灭灯的统一停止/复位收口函数（主屏焦点回收到副屏，并触发完成通知）
 	async function safeResetToBackground(reason, opts = {}) {
@@ -720,20 +731,22 @@ export function apply(ctx) {
 			if (now - lastCompletionNotifyTime > 1500) {
 				lastCompletionNotifyTime = now;
 				try {
-					const title = opts.title || "[Mobile Agent] 任务已全部完成";
+					const title = opts.title || "任务已经完成！";
+					const subtext = opts.subtext || "";
 					const content = opts.content || "所有执行事项均已处理完毕";
 					const total = typeof opts.total === "number" ? opts.total : 0;
 					const completed = typeof opts.completed === "number" ? opts.completed : 0;
 
 					await postJson("/api/notify", {
 						title,
+						subtext,
 						content,
 						tag: "dsh_agent",
 						total,
 						completed,
 						is_completed: true,
 					});
-					fs.appendFileSync("/tmp/agent_notify.log", `[${new Date().toISOString()}] Sent completion notification via reset signal: ${title}\n`);
+					fs.appendFileSync("/tmp/agent_notify.log", `[${new Date().toISOString()}] Sent completion notification via reset signal: ${title} (subtext: ${subtext})\n`);
 				} catch (err) {
 					try {
 						fs.appendFileSync("/tmp/agent_notify.log", `[${new Date().toISOString()}] Failed to send completion notification: ${err?.message || err}\n`);
@@ -754,8 +767,19 @@ export function apply(ctx) {
 			const todoSummary = cachedLastTodoSummary;
 			cachedLastTodoSummary = null; // 消费后立刻清空，避免污染下一轮
 
+			let sessionTitle = "";
+			try {
+				if (ctx.sessionTitle && typeof ctx.sessionTitle.get === "function" && agent?.session) {
+					sessionTitle = ctx.sessionTitle.get(agent.session)?.title || "";
+				}
+				if (!sessionTitle && agent?.session) {
+					sessionTitle = agent.session.title || agent.session.meta?.title || "";
+				}
+			} catch (_) {}
+
 			await safeResetToBackground(`Agent Turn Completed (status: ${status})`, {
-				title: todoSummary?.title || "[Mobile Agent] 任务已全部完成",
+				title: "任务已经完成！",
+				subtext: sessionTitle || lastUserPromptSummary || "",
 				content: todoSummary?.content || "所有执行事项均已处理完毕",
 				total: todoSummary?.total ?? 0,
 				completed: todoSummary?.completed ?? 0,
