@@ -265,51 +265,13 @@ export function apply(ctx) {
 
 			const attachments = ctx.get("attachments");
 			if (attachments) {
-				// Evict/offload older historical images from the session so only the latest screenshot stays in context
-				try {
-					const session = exec?.agent?.session;
-					if (session && typeof session.append === "function") {
-						const nodes = session.surface?.nodes || [];
-						const targets = [];
-						for (const seq of nodes) {
-							const event = session.eventAt(seq);
-							if (!event || (event.type !== "user/message" && event.type !== "tool/result")) continue;
-							const message = session.deriveEventMessage(event);
-							if (!message || !Array.isArray(message.content)) continue;
-							const imageIndexes = [];
-							let imageIndex = 0;
-							const visit = (blocks) => {
-								for (const block of blocks) {
-									if (block.type === "image") {
-										if (block.offloaded !== true) {
-											imageIndexes.push(imageIndex);
-										}
-										imageIndex += 1;
-									} else if (block.type === "tool-result" && Array.isArray(block.content)) {
-										visit(block.content);
-									}
-								}
-							};
-							visit(message.content);
-							if (imageIndexes.length > 0) {
-								targets.push({ seq, imageIndexes });
-							}
-						}
-						if (targets.length > 0) {
-							session.append("image/offload", { targets });
-						}
-					}
-				} catch (offloadErr) {
-					// Soft fallback
-				}
-
 				const ref = await attachments.saveImage({
 					data: buf,
 					mediaType,
 					name: mediaType === "image/jpeg" ? "mobile_screenshot.jpg" : "mobile_screenshot.png",
 				});
 				return {
-					message: `${screenshotScaleText(delivery)} Historical images offloaded.`,
+					message: screenshotScaleText(delivery),
 					attachment: ref,
 				};
 			}
