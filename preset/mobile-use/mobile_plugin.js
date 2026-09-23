@@ -904,12 +904,16 @@ export function apply(ctx) {
 			.catch((err) => {
 				phoneController.abort();
 				postJson("/api/question/cancel", { request_id: requestId }).catch(() => {});
+				// If aborted because phone answered, do not rethrow as unhandled rejection
+				if (webController.signal.aborted) {
+					return new Promise(() => {});
+				}
 				throw err;
 			});
 
 		// Race between phone and web
 		return await Promise.race([phonePromise, webPromise]);
-	});
+	}, { prepend: true });
 }
 
 export default { apply, inject, name };
