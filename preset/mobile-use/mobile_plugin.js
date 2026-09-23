@@ -394,20 +394,20 @@ export function apply(ctx) {
 	// 6. mobile_type
 	ctx.tools.register(defineTool({
 		name: "mobile_type",
-		description: "Type text into an input field by target ID or focus.",
+		description: "Type text into an input field, replacing its content. Never clicks, never touches the clipboard.",
 		parameters: {
 			text: {
 				type: "string",
 				required: true,
-				description: "Text content to type.",
+				description: "Text to write (replaces the field's entire content).",
 			},
 			target: {
 				type: "string",
-				description: "Target element ID or resource ID. Omit to type into focused element.",
+				description: "Resource id from dump (or idx:N). Omit to type into the focused field.",
 			},
 			submit: {
 				type: "boolean",
-				description: "Whether to press ENTER after typing. Default: false.",
+				description: "Press ENTER after a successful write (in chat/SMS apps this SENDS). Default: false.",
 			},
 		},
 		output: {
@@ -427,11 +427,27 @@ export function apply(ctx) {
 			let resultText = "";
 			if (typeof res.message === "string" && res.message.startsWith("{")) {
 				try {
-					const parsed = JSON.parse(res.message);
-					if (parsed.ok) {
-						resultText = `Text injected successfully [mode=${parsed.mode || "set_text"}, verified="${parsed.verified_text || args.text}", cost=${parsed.cost_ms}ms]`;
+					const p = JSON.parse(res.message);
+					const ev = [];
+					if (p.bounds) ev.push(`node=${p.bounds}${p.vid ? ` ${p.vid}` : ""}`);
+					if (p.before_text != null) ev.push(`before="${p.before_text}"`);
+					if (p.verified_text != null) ev.push(`after="${p.verified_text}"`);
+					const evStr = ev.length ? ` | ${ev.join(" · ")}` : "";
+					if (p.ok && !p.error) {
+						resultText = `Text injected [verified, cost=${p.cost_ms}ms]${evStr}`;
+					} else if (p.ok && p.error === "verify_unavailable") {
+						resultText = `Text injected, read-back unavailable (${p.reason || "unreadable"}) — written but not self-verifiable [cost=${p.cost_ms}ms]${evStr}`;
 					} else {
-						resultText = `Text injection warning: ${parsed.error || "unverified"}`;
+						const why = {
+							no_focused_input: `no focused input field (focus is on: ${p.focus_hint || "nothing"}) — click the field first, then type without target`,
+							target_not_found: `target not found (${p.reason || "no such id"}) — use an exact resource id from dump, or click the field and omit target`,
+							ambiguous_target: `target matches multiple nodes (${p.reason || ""}) — click the field and omit target`,
+							target_not_editable: `target is not editable (${p.reason || ""})`,
+							inject_rejected: "the field rejected the write (ACTION_SET_TEXT returned false)",
+							verify_mismatch: "write was accepted but read-back differs from input (app may have transformed it)",
+							internal_error: `internal error: ${p.exception || "unknown"}`,
+						}[p.error] || p.error || "unverified";
+						resultText = `Type failed: ${why}${evStr}`;
 					}
 				} catch (_) {
 					resultText = `Injected text: "${args.text}"`;

@@ -75,7 +75,7 @@
         - Vertical scroll down (reveal content below): swipe from `(Width/2, Height * 0.65)` to `(Width/2, Height * 0.25)`.
         - Vertical scroll up (reveal content above): swipe from `(Width/2, Height * 0.25)` to `(Width/2, Height * 0.65)`.
         - Default duration is 300ms.
-      - **Smart Typing (`mobile_type`)**: Pass `target` (node ID or resource ID) and `text` for instant direct overwrite via Accessibility `ACTION_SET_TEXT`. Set `submit: true` to send ENTER automatically. The tool verifies text internally.
+      - **Smart Typing (`mobile_type`)**: Replaces the focused field (or exact target resource id / idx:N) with text — it only writes, never clicks or touches the clipboard. Click the field first if unfocused; `submit: true` presses ENTER (SENDs in chat).
       - **Keys (`mobile_press_key`)**: Use `BACK` to return or dismiss popups; `HOME` to go to launcher; `ENTER` to submit.
       - **Waiting (`mobile_wait`)**: Call `mobile_wait(duration_ms)` after actions triggering complex animations or page loading.
       - **Popups & Banners**: For ordinary promotional popups, privacy agreements, or permission prompts, identify the close/confirm buttons via `mobile_dump_ui` and dismiss them autonomously.
