@@ -1,0 +1,60 @@
+{
+  "name": "dsh-preset-mobile-use",
+  "version": "1.0.0",
+  "description": "Mobile Use Agent Preset Bundle for DeepSeek Harness (DSH): autonomous Android control with dual-modality perception, root actions, and virtual display support.",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "compatibility": {
+      "dsh": ">=0.1.0",
+      "dshReleases": {
+        "0.1.2-alpha.2": "compatible",
+        "0.1.2-alpha.3": "compatible",
+        "0.1.2-alpha.4": "compatible",
+        "0.1.2-alpha.5": "compatible",
+        "0.1.2-rc.1": "compatible",
+        "0.1.3-alpha.1": "compatible",
+        "0.1.3-alpha.2": "compatible",
+        "0.1.5-alpha.1": "compatible",
+        "0.1.5-alpha.2": "compatible",
+        "0.1.5-rc.1": "compatible",
+        "0.1.5-rc.2": "compatible",
+        "0.1.5-rc.3": "compatible",
+        "0.1.6-alpha.1": "compatible",
+        "0.1.6-alpha.2": "compatible",
+        "0.1.7-alpha.1": "compatible",
+        "0.1.7-alpha.2": "compatible",
+        "0.1.7-rc.1": "compatible"
+      }
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AcidGr/dsh-preset-mobile-use.git"
+  },
+  "homepage": "https://github.com/AcidGr/dsh-preset-mobile-use",
+  "bugs": {
+    "url": "https://github.com/AcidGr/dsh-preset-mobile-use/issues"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "dsh-preset",
+    "mobile-use",
+    "android",
+    "virtual-display"
+  ],
+  "license": "MIT"
+}

@@ -42,6 +42,7 @@ if ! node "$DIR/check-preset.mjs" "$SRC/mobile_plugin.js"; then
 fi
 
 cp -f "$SRC/agent.cordis.yml" "$SRC/mobile_plugin.js" "$SRC/preset.yml" "$DST/"
+cp -f "$SRC/mobile_plugin.js" "$DIR/lib/index.js"
 
 diff -rq "$SRC" "$DST"
 echo "installed into $DST"
