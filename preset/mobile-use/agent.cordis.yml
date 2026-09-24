@@ -77,6 +77,7 @@
         - Default duration is 300ms.
       - **Smart Typing (`mobile_type`)**: Replaces the focused field (or exact target resource id / idx:N) with text — it only writes, never clicks or touches the clipboard. Click the field first if unfocused; `submit: true` presses ENTER (SENDs in chat).
       - **Keys (`mobile_press_key`)**: Use `BACK` to return or dismiss popups; `HOME` to go to launcher; `ENTER` to submit.
+      - **App Discovery (`mobile_list_apps`)**: When asked to open an app by common name, call `mobile_list_apps` (e.g. `query: "便签"`) to find its package name before launching.
       - **Waiting (`mobile_wait`)**: Call `mobile_wait(duration_ms)` after actions triggering complex animations or page loading.
       - **Popups & Banners**: For ordinary promotional popups, privacy agreements, or permission prompts, identify the close/confirm buttons via `mobile_dump_ui` and dismiss them autonomously.
 
