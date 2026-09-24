@@ -35,10 +35,6 @@ const { defineTool } = resolveDshTools();
 
 /**
  * Resolve an optional dependency from the DSH installation that mounted this plugin.
- *
- * Same candidate order as {@link resolveDshTools}. `sharp` is a native module that only
- * resolves out of the DSH tree, and failing to find it must degrade the screenshot tool to
- * "no downscale" rather than take the whole preset down with it.
  */
 function resolveOptionalDependency(name) {
 	const tryLoad = (basePath) => {
@@ -62,58 +58,9 @@ function resolveOptionalDependency(name) {
 
 const sharp = resolveOptionalDependency("sharp");
 
-/**
- * Longest delivered edge that still fits the DeepSeek vision token grid at EVERY aspect
- * ratio, so a screenshot never gets rescaled a second time behind our back.
- *
- * The grid bills `gridH * (gridW + 1) + 2` tokens on 14px patches with 3:1 downsampling,
- * capped at 1024 tokens per image, and the count grows with the grid width — so a square is
- * the worst case. 1302x1302 is the largest square the cap admits (994 tokens; a 1316 square
- * already needs 1058), and a measured sweep over 181 aspect ratios never exceeded 994. Any
- * image whose long edge is <= 1302 therefore reaches the model untouched whatever its shape.
- *
- * That pass-through is the whole point: an image the pipeline does not rescale is one whose
- * delivered dimensions this tool can state authoritatively, instead of an unknown factor the
- * model would otherwise have to discover by trial and error.
- */
 const MAX_DELIVERED_LONG_EDGE = 1302;
-
-/**
- * Encoding of the downscaled image that actually reaches the model.
- *
- * This buffer is what the request carries, every request, for as long as the screenshot
- * stays the newest one — the harness passes a clean JPEG through byte-identically, so its
- * size is the request size.
- *
- * QUALITY, measured against the real screen: PNG 47.24 dB, JPEG q92 41.02 dB, q95 42.00 dB,
- * q85 39.60 dB. q92 is the chosen point: the agent reads UI off this buffer to decide where
- * to tap, and 41 dB keeps small text legible where q85 starts to soften it. Raising the
- * gateway's own JPEG quality instead buys almost nothing (q85 -> q95 was worth +0.11 dB)
- * because this second encode dominates the loss, so the daemon is left at q85.
- *
- * SIZE, measured by re-encoding the 287 real screenshots this tool has delivered, under the
- * pi-ai/cliproxyapi request limits that decide what actually goes on the wire (maxPixels
- * 4194304, maxBytes 1 MiB). Base64 bytes of ONE screenshot in ONE request, medians:
- *
- *   full-res 1272x2800 PNG, as delivered before the downscale landed   432 KB
- *     (the harness itself re-encodes any request image over 1 MiB down to <= 1 MiB, so the
- *      ~2 MB PNG a heavy screen produces never crossed the wire at its stored size)
- *   + downscale to 424x933 PNG                                         163 KB   (2.79x)
- *   + JPEG q92 instead of PNG                                           90 KB   (1.83x)
- *   end to end, 432 KB -> 90 KB                                        5.01x
- *
- * The spread is wide and it is not a rounding detail: per frame this ranges 2.77x to 10.04x,
- * because PNG is already good at flat UI (the JPEG step alone measured 1.24x there) while a
- * wallpaper-heavy screen measured 9.7x. Do not quote a single frame as "the" gain — the
- * heaviest frame in this corpus is 9.66x on the JPEG step alone, and quoting it would
- * overstate the change by more than 5x against the median.
- */
 const DELIVERED_JPEG_QUALITY = 92;
 
-/**
- * Pick the smallest integer divisor that brings the long edge within the pass-through limit,
- * so the factor the model applies is a whole number it cannot misremember.
- */
 function planScreenshotDelivery(width, height) {
 	const longEdge = Math.max(width, height);
 	let divisor = 1;
@@ -125,23 +72,16 @@ function planScreenshotDelivery(width, height) {
 	};
 }
 
-/** Drop trailing zeros so a stated factor reads as `3` rather than `3.0000`. */
 function factorText(value) {
 	return String(Number(value.toFixed(4)));
 }
 
-/**
- * State the exact image-to-display mapping in the tool result.
- *
- * This is the fix for the first-click failure: the model never has to infer the scale from
- * the image envelope, and it never has to carry a remembered constant between screenshots.
- */
 function screenshotScaleText(delivery) {
 	if (!delivery) {
 		return "Screenshot captured, but it could not be downscaled to a size the vision pipeline passes through untouched, so it may have been rescaled before you saw it. Read the image dimensions disclosed with this result and convert with x_display = x_image * displayW / imageW; do not assume the image is 1:1.";
 	}
 	const how = delivery.divisor > 1 ? `downscaled 1/${delivery.divisor}` : "not downscaled";
-	return `Screenshot captured. Display ${delivery.displayWidth}x${delivery.displayHeight} delivered as ${delivery.width}x${delivery.height} (${how}), a size the vision pipeline passes through untouched, so these are exactly the pixels you see. Convert any pixel you read off the image into a mobile_click coordinate with x_display = x_image * ${factorText(delivery.scaleX)} and y_display = y_image * ${factorText(delivery.scaleY)}. If the image dimensions disclosed with this result differ from ${delivery.width}x${delivery.height}, trust that disclosure instead and use x_display = x_image * displayW / imageW.`;
+	return `Screenshot captured. Display ${delivery.displayWidth}x${delivery.displayHeight} delivered as ${delivery.width}x${delivery.height} (${how}), a size the vision pipeline passes through untouched, so these are exactly the pixels you see. Convert any pixel you read off the image into mobile(action: "click", coordinate: [x_display, y_display]) with x_display = x_image * ${factorText(delivery.scaleX)} and y_display = y_image * ${factorText(delivery.scaleY)}. If the image dimensions disclosed with this result differ from ${delivery.width}x${delivery.height}, trust that disclosure instead and use x_display = x_image * displayW / imageW.`;
 }
 
 const SERVER_BASE = process.env.AGENT_VD_SERVER || "http://127.0.0.1:3070";
@@ -153,14 +93,14 @@ const SERVER_BASE = process.env.AGENT_VD_SERVER || "http://127.0.0.1:3070";
  * Why this is ON by default: the physical display carries that chrome and the virtual
  * display carries none of it, so the SAME app screen produced two different trees
  * depending on which display happened to be the target. Measured on the Settings app,
- * display 0, unfiltered vs filtered: windows 5 -> 2, total 34 -> 19, and every node that
+ * display 0, unfiltered vs filtered: windows 4 -> 2, total 27 -> 19, and every node that
  * disappeared was status-bar chrome (clock, battery, signal, WLAN icon). `.settings`
- * itself kept all of its real controls, so system APPS are untouched — the test is on the
- * window's OWNER package and its root node's package, never on a node's package alone.
+ * itself kept all 19 of its real controls, so system APPS are untouched — the test is on
+ * the window's OWNER package, never on a node's package.
  *
  * Set AGENT_NO_SYSTEM_UI=0 to restore the unfiltered tree without touching the server;
- * the server still honours a plain request with no query parameter, so this switch is the
- * only place the behaviour is chosen.
+ * the server also still honours a plain request with no query parameter, so this switch
+ * is the only place the behaviour is chosen.
  */
 const DROP_SYSTEM_UI = (process.env.AGENT_NO_SYSTEM_UI || "1") !== "0";
 const DUMP_UI_PATH = DROP_SYSTEM_UI ? "/api/dump_ui?no_system_ui=1" : "/api/dump_ui";
@@ -188,34 +128,215 @@ async function getJson(path) {
 	return await resp.json();
 }
 
+/** Capture screenshot as attachment, using sharp downscaling when available. */
+async function captureScreenshotAttachment(ctx) {
+	const resp = await fetch(`${SERVER_BASE}/api/screenshot`);
+	if (!resp.ok) {
+		const errText = await resp.text();
+		return { message: `Screenshot failed (HTTP ${resp.status}): ${errText}` };
+	}
+	let mediaType = (resp.headers.get("content-type") || "image/png").split(";")[0].trim();
+	if (mediaType !== "image/jpeg") mediaType = "image/png";
+	let buf = Buffer.from(await resp.arrayBuffer());
+	let delivery;
+	try {
+		const meta = sharp ? await sharp(buf).metadata() : null;
+		if (meta && meta.width > 0 && meta.height > 0) {
+			const plan = planScreenshotDelivery(meta.width, meta.height);
+			if (plan.divisor > 1) {
+				buf = await sharp(buf)
+					.resize({ width: plan.width, height: plan.height, fit: "fill" })
+					.jpeg({ quality: DELIVERED_JPEG_QUALITY })
+					.toBuffer();
+			}
+			delivery = {
+				displayWidth: meta.width,
+				displayHeight: meta.height,
+				width: plan.width,
+				height: plan.height,
+				divisor: plan.divisor,
+				scaleX: meta.width / plan.width,
+				scaleY: meta.height / plan.height,
+			};
+		}
+	} catch (_) {
+		delivery = undefined;
+	}
+	if (delivery && delivery.divisor > 1) mediaType = "image/jpeg";
+
+	const attachments = ctx.get("attachments");
+	if (attachments) {
+		const ref = await attachments.saveImage({
+			data: buf,
+			mediaType,
+			name: mediaType === "image/jpeg" ? "mobile_screenshot.jpg" : "mobile_screenshot.png",
+		});
+		return {
+			message: screenshotScaleText(delivery),
+			attachment: ref,
+		};
+	}
+	return {
+		message: `${screenshotScaleText(delivery)} The attachment service is unavailable, so the image is not in your context.`,
+	};
+}
+
+/** Capture accessibility hierarchy dump string. */
+async function captureUiDump() {
+	try {
+		const resp = await fetch(`${SERVER_BASE}${DUMP_UI_PATH}`);
+		const text = await resp.text();
+		try {
+			const data = JSON.parse(text);
+			if (data && data.success === false) {
+				const reason = data.message || "the gateway refused the dump";
+				return `${reason}\n${data.data || ""}`;
+			}
+			if (data && typeof data.data === "string") {
+				const notice = data.notice ? `${data.notice}\n` : "";
+				const head = data.message ? `${data.message}\n` : "";
+				return `${notice}${head}${data.data}`;
+			}
+		} catch (_) {}
+		return text;
+	} catch (err) {
+		return `Error dumping UI hierarchy: ${err.message}`;
+	}
+}
+
+/**
+ * Detect transient empty tree:
+ * 1. tree_blocked=1: window exists, but root was empty (firstWindows > 0 && firstSize == 0).
+ * 2. no_windows=1: zero windows returned during Activity transition.
+ * 3. total=0: 0 actionable or 0 total elements.
+ * 4. foreground display: only status bar/system chrome (act_sent <= 2) while main app is transitioning.
+ */
+function isTransientEmptyTree(text) {
+	if (!text || typeof text !== "string") return true;
+
+	// 1. 常规空树特征：包含无窗口、树受阻、总节点为0、或应用节点为0
+	if (/tree_blocked=1|no_windows=1|\btotal=0\b|\bapp_nodes=0\b|tree 0 nodes/i.test(text)) return true;
+
+	// 2. 前台物理屏特有特征：只有系统状态栏/侧边栏（可操作节点 <= 2 个）
+	if (text.includes("mode=foreground") && /\bact_sent=[0-2]\b/.test(text)) {
+		return true; // 说明前台只有时钟和灵动岛，主应用还在转场中，自动退避重试！
+	}
+
+	return false;
+}
+
+/** Capture accessibility hierarchy dump string, with auto-retry on transient empty trees. */
+async function captureUiDumpWithRetry(maxRetries = 2, delayMs = 600) {
+	let lastText = "";
+	for (let attempt = 0; attempt <= maxRetries; attempt++) {
+		lastText = await captureUiDump();
+		if (!isTransientEmptyTree(lastText)) {
+			return lastText;
+		}
+		if (attempt < maxRetries) {
+			await new Promise((resolve) => setTimeout(resolve, delayMs));
+		}
+	}
+	return lastText;
+}
+
+/** Unified observation: returns dump_ui text or visual screenshot. */
+async function captureObservation(obsMode, ctx) {
+	if (obsMode === "visual") {
+		return await captureScreenshotAttachment(ctx);
+	}
+	const text = await captureUiDumpWithRetry();
+	return { message: text };
+}
+
+/** Execute action and append observation to build a single-turn action-observation loop. */
+async function executeActionAndObserve(headerText, actionNotice, obsMode, ctx) {
+	const obs = await captureObservation(obsMode, ctx);
+	const notice = actionNotice ? `${actionNotice}\n` : "";
+	return {
+		message: `${notice}[${headerText}]\n\n${obs.message}`,
+		...(obs.attachment ? { attachment: obs.attachment } : {}),
+	};
+}
+
 export const name = "mobile-use-plugin";
 export const inject = ["tools"];
 
 export function apply(ctx) {
-	// 1. mobile_status
+	// 1. mobile: Unified screen interaction and perception tool
 	ctx.tools.register(defineTool({
-		name: "mobile_status",
-		description: "Get current display metrics and system status.",
-		parameters: {},
-		output: {
-			schema: { type: "string" },
-			render: (_args, val) => [{ type: "text", text: val }],
+		name: "mobile",
+		description: "Interact with and observe the mobile device. Every physical action (click, swipe, type, key, wait, launch_app) automatically captures and returns the updated screen state (UI hierarchy tree by default, or visual screenshot). Call action='observe' to inspect the screen without moving.",
+		parameters: {
+			action: {
+				type: "string",
+				required: true,
+				enum: [
+					"observe",
+					"click",
+					"swipe",
+					"type",
+					"key",
+					"wait",
+					"launch_app",
+					"list_apps",
+					"switch_mode",
+					"status",
+				],
+				description: "Action to perform on device. 'observe': refresh and view current screen state without touching.",
+			},
+			coordinate: {
+				type: "array",
+				items: { type: "integer" },
+				description: "[x, y] coordinates in display pixels for click (tap/long-press), or starting coordinates for swipe.",
+			},
+			end_coordinate: {
+				type: "array",
+				items: { type: "integer" },
+				description: "[x2, y2] ending coordinates in display pixels for swipe.",
+			},
+			x: {
+				type: "integer",
+				description: "Optional direct X coordinate in display pixels for click or swipe start.",
+			},
+			y: {
+				type: "integer",
+				description: "Optional direct Y coordinate in display pixels for click or swipe start.",
+			},
+			x2: {
+				type: "integer",
+				description: "Optional direct ending X coordinate in display pixels for swipe.",
+			},
+			y2: {
+				type: "integer",
+				description: "Optional direct ending Y coordinate in display pixels for swipe.",
+			},
+			text: {
+				type: "string",
+				description: "Text to type; key name ('BACK', 'HOME', 'ENTER') for key; package name for launch_app; app query for list_apps; or mode ('foreground'|'background') for switch_mode.",
+			},
+			activity: {
+				type: "string",
+				description: "Optional Activity class for launch_app (e.g. '.ui.LauncherUI'). Omit to launch the package's default launcher activity.",
+			},
+			target: {
+				type: "string",
+				description: "Optional resource id from dump (or idx:N) for type action. Omit to type into focused field.",
+			},
+			submit: {
+				type: "boolean",
+				description: "Whether to press ENTER after typing (sends in chat/SMS apps). Default: false.",
+			},
+			duration_ms: {
+				type: "integer",
+				description: "Duration in milliseconds for long-press click, swipe, or wait.",
+			},
+			mode: {
+				type: "string",
+				enum: ["tree", "visual"],
+				description: "Observation mode: 'tree' (default, returns structured accessibility UI dump) or 'visual' (returns screenshot image).",
+			},
 		},
-		async execute() {
-			try {
-				const status = await getJson("/api/status");
-				return JSON.stringify(status, null, 2);
-			} catch (err) {
-				return `Error querying status: ${err.message}`;
-			}
-		},
-	}));
-
-	// 2. mobile_screenshot
-	ctx.tools.register(defineTool({
-		name: "mobile_screenshot",
-		description: "Capture a screenshot of the target display.",
-		parameters: {},
 		output: {
 			schema: {
 				type: "object",
@@ -232,356 +353,211 @@ export function apply(ctx) {
 				return blocks;
 			},
 		},
-		async execute(_args, exec) {
-			const resp = await fetch(`${SERVER_BASE}/api/screenshot`);
-			if (!resp.ok) {
-				const errText = await resp.text();
-				throw new Error(`Screenshot failed (HTTP ${resp.status}): ${errText}`);
-			}
-			// The gateway answers with the daemon's cached frame (JPEG) whenever it has
-			// one, and falls back to screencap (PNG) otherwise, so the media type has to
-			// travel with the bytes. This matters on the path below where sharp is
-			// unavailable and the response is attached untouched — a JPEG declared as
-			// image/png would be rejected by the provider.
-			let mediaType = (resp.headers.get("content-type") || "image/png").split(";")[0].trim();
-			if (mediaType !== "image/jpeg") mediaType = "image/png";
-			let buf = Buffer.from(await resp.arrayBuffer());
-			// Downscale before the harness ever encodes the image for the provider. A
-			// delivered long edge at or below MAX_DELIVERED_LONG_EDGE is passed through
-			// untouched, so the dimensions reported below are exactly the ones the model
-			// receives — which is what lets us state the factor instead of the model
-			// discovering it by tapping the wrong pixel first.
-			let delivery;
-			try {
-				const meta = sharp ? await sharp(buf).metadata() : null;
-				if (meta && meta.width > 0 && meta.height > 0) {
-					const plan = planScreenshotDelivery(meta.width, meta.height);
-					if (plan.divisor > 1) {
-						buf = await sharp(buf)
-							.resize({ width: plan.width, height: plan.height, fit: "fill" })
-							.jpeg({ quality: DELIVERED_JPEG_QUALITY })
-							.toBuffer();
-					}
-					delivery = {
-						displayWidth: meta.width,
-						displayHeight: meta.height,
-						width: plan.width,
-						height: plan.height,
-						divisor: plan.divisor,
-						scaleX: meta.width / plan.width,
-						scaleY: meta.height / plan.height,
+		async execute(args) {
+			const obsMode = args.mode || "tree";
+
+			switch (args.action) {
+				case "observe": {
+					const obs = await captureObservation(obsMode, ctx);
+					return {
+						message: `[Observed screen state]\n\n${obs.message}`,
+						...(obs.attachment ? { attachment: obs.attachment } : {}),
 					};
 				}
-			} catch (scaleErr) {
-				// Keep the native image and let the result text warn about scale rather
-				// than claiming a factor the delivered image may not honour.
-				delivery = undefined;
-			}
-			// The downscaled branch re-encodes through sharp, so the attachment is JPEG
-			// there no matter what the gateway sent; only the pass-through case keeps the
-			// server's own format.
-			if (delivery && delivery.divisor > 1) mediaType = "image/jpeg";
 
-			const attachments = ctx.get("attachments");
-			if (attachments) {
-				const ref = await attachments.saveImage({
-					data: buf,
-					mediaType,
-					name: mediaType === "image/jpeg" ? "mobile_screenshot.jpg" : "mobile_screenshot.png",
-				});
-				return {
-					message: screenshotScaleText(delivery),
-					attachment: ref,
-				};
-			}
-			return {
-				message: `${screenshotScaleText(delivery)} The attachment service is unavailable, so the image is not in your context.`,
-			};
-		},
-	}));
-
-	// 3. mobile_dump_ui
-	ctx.tools.register(defineTool({
-		name: "mobile_dump_ui",
-		description: "Inspect the screen accessibility hierarchy and element coordinates.",
-		parameters: {},
-		output: {
-			schema: { type: "string" },
-			render: (_args, val) => [{ type: "text", text: val }],
-		},
-		async execute(args) {
-			try {
-				const resp = await fetch(`${SERVER_BASE}${DUMP_UI_PATH}`);
-				const text = await resp.text();
-				try {
-					const data = JSON.parse(text);
-					if (data && data.success === false) {
-						const reason = data.message || "the gateway refused the dump";
-						return `${reason}\n${data.data || ""}`;
+				case "click": {
+					const x = args.coordinate?.[0] ?? args.x;
+					const y = args.coordinate?.[1] ?? args.y;
+					if (x == null || y == null) {
+						return { message: "Error: action 'click' requires coordinates: coordinate: [x, y] (or x and y)." };
 					}
-					// The gateway answers {success, message, data}: `message` is a one-line
-					// count, `data` is the observation itself (a status line, a column line,
-					// then one row per element). Hand the model the observation, NOT the
-					// envelope — and say what the last dump lost, because a silent drop is
-					// worse than a stated one.
-					if (data && typeof data.data === "string") {
-						const notice = data.notice ? `${data.notice}\n` : "";
-						const head = data.message ? `${data.message}\n` : "";
-						return `${notice}${head}${data.data}`;
+					const payload = { x: Math.round(x), y: Math.round(y) };
+					if (typeof args.duration_ms === "number" && args.duration_ms > 0) {
+						payload.duration_ms = args.duration_ms;
 					}
-				} catch (_) {}
-				return text;
-			} catch (err) {
-				return `Error dumping UI hierarchy: ${err.message}`;
-			}
-		},
-	}));
-
-	// 4. mobile_click
-	ctx.tools.register(defineTool({
-		name: "mobile_click",
-		description: "Tap or long-press at (x, y) coordinates.",
-		parameters: {
-			x: {
-				type: "integer",
-				required: true,
-				description: "X coordinate in pixels.",
-			},
-			y: {
-				type: "integer",
-				required: true,
-				description: "Y coordinate in pixels.",
-			},
-			duration_ms: {
-				type: "integer",
-				description: "Press duration in milliseconds for long press. Omit for standard tap.",
-			},
-		},
-		output: {
-			schema: { type: "string" },
-			render: (_args, val) => [{ type: "text", text: val }],
-		},
-		async execute(args) {
-			const payload = { x: args.x, y: args.y };
-			if (typeof args.duration_ms === "number" && args.duration_ms > 0) {
-				payload.duration_ms = args.duration_ms;
-			}
-			const res = await postJson("/api/click", payload);
-			if (!res.success) {
-				throw new Error(`Click failed: ${res.message || "unknown error"}`);
-			}
-			const actionDesc = payload.duration_ms
-				? `Long-pressed (${args.x}, ${args.y}) for ${payload.duration_ms}ms`
-				: `Tapped (${args.x}, ${args.y})`;
-			const resultText = `${actionDesc}. The screen has changed or is changing — run mobile_dump_ui again to see the result before the next action.`;
-			return res.notice ? `${res.notice}\n${resultText}` : resultText;
-		},
-	}));
-
-	// 5. mobile_swipe
-	ctx.tools.register(defineTool({
-		name: "mobile_swipe",
-		description: "Perform a touch swipe gesture from (x1, y1) to (x2, y2).",
-		parameters: {
-			x1: { type: "integer", required: true, description: "Starting X coordinate." },
-			y1: { type: "integer", required: true, description: "Starting Y coordinate." },
-			x2: { type: "integer", required: true, description: "Ending X coordinate." },
-			y2: { type: "integer", required: true, description: "Ending Y coordinate." },
-			duration_ms: { type: "integer", description: "Duration in milliseconds (default: 300)." },
-		},
-		output: {
-			schema: { type: "string" },
-			render: (_args, val) => [{ type: "text", text: val }],
-		},
-		async execute(args) {
-			const duration = args.duration_ms || 300;
-			const res = await postJson("/api/swipe", {
-				x1: args.x1,
-				y1: args.y1,
-				x2: args.x2,
-				y2: args.y2,
-				duration,
-			});
-			if (!res.success) {
-				throw new Error(`Swipe failed: ${res.message || "unknown error"}`);
-			}
-			const resultText = `Swiped from (${args.x1}, ${args.y1}) to (${args.x2}, ${args.y2}) in ${duration}ms`;
-			return res.notice ? `${res.notice}\n${resultText}` : resultText;
-		},
-	}));
-
-	// 6. mobile_type
-	ctx.tools.register(defineTool({
-		name: "mobile_type",
-		description: "Type text into an input field, replacing its content. Never clicks, never touches the clipboard.",
-		parameters: {
-			text: {
-				type: "string",
-				required: true,
-				description: "Text to write (replaces the field's entire content).",
-			},
-			target: {
-				type: "string",
-				description: "Resource id from dump (or idx:N). Omit to type into the focused field.",
-			},
-			submit: {
-				type: "boolean",
-				description: "Press ENTER after a successful write (in chat/SMS apps this SENDS). Default: false.",
-			},
-		},
-		output: {
-			schema: { type: "string" },
-			render: (_args, val) => [{ type: "text", text: val }],
-		},
-		async execute(args) {
-			const payload = {
-				text: args.text,
-				target: args.target !== undefined ? String(args.target) : "focused",
-				submit: Boolean(args.submit),
-			};
-			const res = await postJson("/api/type", payload);
-			if (!res.success) {
-				throw new Error(`Text input failed: ${res.message || "unknown error"}`);
-			}
-			let resultText = "";
-			if (typeof res.message === "string" && res.message.startsWith("{")) {
-				try {
-					const p = JSON.parse(res.message);
-					const ev = [];
-					if (p.bounds) ev.push(`node=${p.bounds}${p.vid ? ` ${p.vid}` : ""}`);
-					if (p.before_text != null) ev.push(`before="${p.before_text}"`);
-					if (p.verified_text != null) ev.push(`after="${p.verified_text}"`);
-					const evStr = ev.length ? ` | ${ev.join(" · ")}` : "";
-					if (p.ok && !p.error) {
-						resultText = `Text injected [verified, cost=${p.cost_ms}ms]${evStr}`;
-					} else if (p.ok && p.error === "verify_unavailable") {
-						resultText = `Text injected, read-back unavailable (${p.reason || "unreadable"}) — written but not self-verifiable [cost=${p.cost_ms}ms]${evStr}`;
-					} else {
-						const why = {
-							no_focused_input: `no focused input field (focus is on: ${p.focus_hint || "nothing"}) — click the field first, then type without target`,
-							target_not_found: `target not found (${p.reason || "no such id"}) — use an exact resource id from dump, or click the field and omit target`,
-							ambiguous_target: `target matches multiple nodes (${p.reason || ""}) — click the field and omit target`,
-							target_not_editable: `target is not editable (${p.reason || ""})`,
-							inject_rejected: "the field rejected the write (ACTION_SET_TEXT returned false)",
-							verify_mismatch: "write was accepted but read-back differs from input (app may have transformed it)",
-							internal_error: `internal error: ${p.exception || "unknown"}`,
-						}[p.error] || p.error || "unverified";
-						resultText = `Type failed: ${why}${evStr}`;
+					try {
+						const res = await postJson("/api/click", payload);
+						if (!res.success) {
+							return { message: `Click failed at (${x}, ${y}): ${res.message || "unknown error"}` };
+						}
+						const actionDesc = payload.duration_ms
+							? `OK: Long-pressed (${x}, ${y}) for ${payload.duration_ms}ms`
+							: `OK: Tapped (${x}, ${y})`;
+						await new Promise((r) => setTimeout(r, 350));
+						return await executeActionAndObserve(actionDesc, res.notice, obsMode, ctx);
+					} catch (err) {
+						return { message: `Click execution error: ${err.message}` };
 					}
-				} catch (_) {
-					resultText = `Injected text: "${args.text}"`;
 				}
-			} else {
-				resultText = `Injected text: "${args.text}"`;
+
+				case "swipe": {
+					const x1 = args.coordinate?.[0] ?? args.x;
+					const y1 = args.coordinate?.[1] ?? args.y;
+					const x2 = args.end_coordinate?.[0] ?? args.x2;
+					const y2 = args.end_coordinate?.[1] ?? args.y2;
+					if (x1 == null || y1 == null || x2 == null || y2 == null) {
+						return { message: "Error: action 'swipe' requires coordinate: [x1, y1] and end_coordinate: [x2, y2]." };
+					}
+					const duration = args.duration_ms || 300;
+					try {
+						const res = await postJson("/api/swipe", {
+							x1: Math.round(x1),
+							y1: Math.round(y1),
+							x2: Math.round(x2),
+							y2: Math.round(y2),
+							duration,
+						});
+						if (!res.success) {
+							return { message: `Swipe failed: ${res.message || "unknown error"}` };
+						}
+						const actionDesc = `OK: Swiped (${x1}, ${y1}) -> (${x2}, ${y2}) in ${duration}ms`;
+						await new Promise((r) => setTimeout(r, 200));
+						return await executeActionAndObserve(actionDesc, res.notice, obsMode, ctx);
+					} catch (err) {
+						return { message: `Swipe execution error: ${err.message}` };
+					}
+				}
+
+				case "type": {
+					if (args.text === undefined || args.text === null) {
+						return { message: "Error: action 'type' requires 'text' parameter." };
+					}
+					const payload = {
+						text: String(args.text),
+						target: args.target !== undefined ? String(args.target) : "focused",
+						submit: Boolean(args.submit),
+					};
+					try {
+						const res = await postJson("/api/type", payload);
+						if (!res.success) {
+							return { message: `Text input failed: ${res.message || "unknown error"}` };
+						}
+						let resultText = "";
+						if (typeof res.message === "string" && res.message.startsWith("{")) {
+							try {
+								const p = JSON.parse(res.message);
+								const ev = [];
+								if (p.bounds) ev.push(`node=${p.bounds}${p.vid ? ` ${p.vid}` : ""}`);
+								if (p.before_text != null) ev.push(`before="${p.before_text}"`);
+								if (p.verified_text != null) ev.push(`after="${p.verified_text}"`);
+								const evStr = ev.length ? ` | ${ev.join(" · ")}` : "";
+								if (p.ok && !p.error) {
+									resultText = `Text injected [verified, cost=${p.cost_ms}ms]${evStr}`;
+								} else if (p.ok && p.error === "verify_unavailable") {
+									resultText = `Text injected, read-back unavailable (${p.reason || "unreadable"}) [cost=${p.cost_ms}ms]${evStr}`;
+								} else {
+									const why = {
+										no_focused_input: `no focused input field (focus is on: ${p.focus_hint || "nothing"}) — click field first, then type without target`,
+										target_not_found: `target not found (${p.reason || "no such id"})`,
+										ambiguous_target: `target matches multiple nodes (${p.reason || ""})`,
+										target_not_editable: `target is not editable (${p.reason || ""})`,
+										inject_rejected: "the field rejected write (ACTION_SET_TEXT returned false)",
+										verify_mismatch: "write was accepted but read-back differs from input",
+										internal_error: `internal error: ${p.exception || "unknown"}`,
+									}[p.error] || p.error || "unverified";
+									resultText = `Type failed: ${why}${evStr}`;
+								}
+							} catch (_) {
+								resultText = `Injected text: "${args.text}"`;
+							}
+						} else {
+							resultText = `Injected text: "${args.text}"`;
+						}
+						await new Promise((r) => setTimeout(r, 200));
+						return await executeActionAndObserve(`OK: ${resultText}`, res.notice, obsMode, ctx);
+					} catch (err) {
+						return { message: `Type execution error: ${err.message}` };
+					}
+				}
+
+				case "key": {
+					const keyName = args.text || args.key;
+					if (!keyName) {
+						return { message: "Error: action 'key' requires key name in 'text' parameter (e.g. 'BACK', 'HOME', 'ENTER')." };
+					}
+					try {
+						const res = await postJson("/api/key", { key: String(keyName) });
+						if (!res.success) {
+							return { message: `Key injection failed: ${res.message || "unknown error"}` };
+						}
+						const actionDesc = `OK: Pressed key '${keyName}'`;
+						const isNavKey = /^(BACK|HOME)$/i.test(String(keyName).trim());
+						await new Promise((r) => setTimeout(r, isNavKey ? 350 : 200));
+						return await executeActionAndObserve(actionDesc, res.notice, obsMode, ctx);
+					} catch (err) {
+						return { message: `Key execution error: ${err.message}` };
+					}
+				}
+
+				case "wait": {
+					const ms = Math.min(Math.max(args.duration_ms || 1000, 100), 10000);
+					await new Promise((resolve) => setTimeout(resolve, ms));
+					return await executeActionAndObserve(`OK: Waited for ${ms}ms`, null, obsMode, ctx);
+				}
+
+				case "launch_app": {
+					const pkg = args.text || args.package;
+					if (!pkg) {
+						return { message: "Error: action 'launch_app' requires package name in 'text' (or 'package') parameter." };
+					}
+					try {
+						const res = await postJson("/api/launch", {
+							package: String(pkg),
+							activity: args.activity || "",
+						});
+						if (!res.success) {
+							return { message: `Launch failed: ${res.message || "unknown error"}` };
+						}
+						const actionDesc = `OK: Launched app ${pkg}${args.activity ? "/" + args.activity : ""}: ${res.message || "OK"}`;
+						await new Promise((r) => setTimeout(r, 2000));
+						return await executeActionAndObserve(actionDesc, res.notice, obsMode, ctx);
+					} catch (err) {
+						return { message: `Launch execution error: ${err.message}` };
+					}
+				}
+
+				case "switch_mode": {
+					const targetMode = args.text || args.mode || "background";
+					try {
+						const res = await postJson("/api/mode", { mode: targetMode });
+						if (!res.success) {
+							return { message: `Failed to switch mode: ${res.message || "unknown error"}` };
+						}
+						return { message: res.message || `Switched to ${res.mode} mode (Display ${res.target_display_id})` };
+					} catch (err) {
+						return { message: `Switch mode error: ${err.message}` };
+					}
+				}
+
+				case "list_apps": {
+					const query = args.text || args.query || "";
+					try {
+						const res = await postJson("/api/apps", { query });
+						if (!res.success) {
+							return { message: `Failed to list apps: ${res.message || "unknown error"}` };
+						}
+						return { message: res.data || "No launchable apps found." };
+					} catch (err) {
+						return { message: `List apps error: ${err.message}` };
+					}
+				}
+
+				case "status": {
+					try {
+						const status = await getJson("/api/status");
+						return { message: JSON.stringify(status, null, 2) };
+					} catch (err) {
+						return { message: `Error querying status: ${err.message}` };
+					}
+				}
+
+				default:
+					return { message: `Error: unknown action '${args.action}'. Supported: observe, click, swipe, type, key, wait, launch_app, list_apps, switch_mode, status.` };
 			}
-			return res.notice ? `${res.notice}\n${resultText}` : resultText;
 		},
 	}));
 
-	// 7. mobile_press_key
-	ctx.tools.register(defineTool({
-		name: "mobile_press_key",
-		description: "Press a navigation or hardware key (e.g. BACK, HOME, ENTER).",
-		parameters: {
-			key: {
-				type: "string",
-				required: true,
-				description: "Key name (BACK, HOME, ENTER, TAB, SPACE, DELETE, APP_SWITCH) or keycode.",
-			},
-		},
-		output: {
-			schema: { type: "string" },
-			render: (_args, val) => [{ type: "text", text: val }],
-		},
-		async execute(args) {
-			const res = await postJson("/api/key", { key: args.key });
-			if (!res.success) {
-				throw new Error(`Key injection failed: ${res.message || "unknown error"}`);
-			}
-			const resultText = `Pressed key: ${args.key}`;
-			return res.notice ? `${res.notice}\n${resultText}` : resultText;
-		},
-	}));
-
-	// 7.5. mobile_wait
-	ctx.tools.register(defineTool({
-		name: "mobile_wait",
-		description: "Wait for a specified duration in milliseconds.",
-		parameters: {
-			duration_ms: {
-				type: "integer",
-				description: "Duration to wait in milliseconds (default: 1000).",
-			},
-		},
-		output: {
-			schema: { type: "string" },
-			render: (_args, val) => [{ type: "text", text: val }],
-		},
-		async execute(args) {
-			const ms = Math.min(Math.max(args.duration_ms || 1000, 100), 10000);
-			await new Promise((resolve) => setTimeout(resolve, ms));
-			return `Waited for ${ms}ms. UI state has settled. Proceed with observation (mobile_dump_ui or mobile_screenshot).`;
-		},
-	}));
-
-	// 8. mobile_launch_app
-	ctx.tools.register(defineTool({
-		name: "mobile_launch_app",
-		description: "Launch an Android application by package name or component.",
-		parameters: {
-			package: {
-				type: "string",
-				required: true,
-				description: "Android application package name.",
-			},
-			activity: {
-				type: "string",
-				description: "Optional Activity component name.",
-			},
-		},
-		output: {
-			schema: { type: "string" },
-			render: (_args, val) => [{ type: "text", text: val }],
-		},
-		async execute(args) {
-			const res = await postJson("/api/launch", {
-				package: args.package,
-				activity: args.activity || "",
-			});
-			if (!res.success) {
-				throw new Error(`Launch failed: ${res.message || "unknown error"}`);
-			}
-			const resultText = `Launched app ${args.package}${args.activity ? "/" + args.activity : ""}: ${res.message || "OK"}`;
-			return res.notice ? `${res.notice}\n${resultText}` : resultText;
-		},
-	}));
-
-	// 9. mobile_list_apps
-	ctx.tools.register(defineTool({
-		name: "mobile_list_apps",
-		description: "获取本机已安装的桌面应用名称与包名。(List installed launchable apps and package names.)",
-		parameters: {
-			query: {
-				type: "string",
-				description: "按名称查找，不填找全部。(Search by app name or package. If omitted, lists all apps.)",
-			},
-		},
-		output: {
-			schema: { type: "string" },
-			render: (_args, val) => [{ type: "text", text: val }],
-		},
-		async execute(args) {
-			const res = await postJson("/api/apps", {
-				query: args?.query || "",
-			});
-			if (!res.success) {
-				throw new Error(`Failed to list apps: ${res.message || "unknown error"}`);
-			}
-			return res.data || "No launchable apps found.";
-		},
-	}));
-
-	// 10. mobile_shell
+	// 2. mobile_shell: Android root shell execution
 	ctx.tools.register(defineTool({
 		name: "mobile_shell",
 		description: "Execute a root shell command in the Android system.",
@@ -613,30 +589,6 @@ export function apply(ctx) {
 		},
 	}));
 
-	// 10. mobile_switch_mode
-	ctx.tools.register(defineTool({
-		name: "mobile_switch_mode",
-		description: "Switch target display between foreground (physical screen) and background (virtual display).",
-		parameters: {
-			mode: {
-				type: "string",
-				required: true,
-				description: "Target display mode: 'foreground' (physical screen) or 'background' (virtual display).",
-			},
-		},
-		output: {
-			schema: { type: "string" },
-			render: (_args, val) => [{ type: "text", text: val }],
-		},
-		async execute(args) {
-			const res = await postJson("/api/mode", { mode: args.mode });
-			if (!res.success) {
-				throw new Error(`Failed to switch mode: ${res.message || "unknown error"}`);
-			}
-			return res.message || `Switched to ${res.mode} mode (Display ${res.target_display_id})`;
-		},
-	}));
-
 	// Report tool execution events to Go gateway for real-time monitoring
 	ctx.on("tools/execute", async (exec, next) => {
 		try {
@@ -645,13 +597,16 @@ export function apply(ctx) {
 			let summary = "";
 			try {
 				if (typeof rawArgs === "object" && rawArgs !== null) {
-					if (rawArgs.command) summary = String(rawArgs.command).slice(0, 80);
-					else if (rawArgs.text) summary = `"${String(rawArgs.text).slice(0, 60)}"`;
-					else if (rawArgs.x !== undefined && rawArgs.y !== undefined) summary = `(${rawArgs.x}, ${rawArgs.y})`;
-					else if (rawArgs.package) summary = String(rawArgs.package);
-					else if (rawArgs.query) summary = String(rawArgs.query);
-					else if (rawArgs.key) summary = String(rawArgs.key);
-					else summary = JSON.stringify(rawArgs).slice(0, 80);
+					if (rawArgs.action) {
+						summary = `[${rawArgs.action}]`;
+						if (rawArgs.coordinate) summary += ` (${rawArgs.coordinate.join(",")})`;
+						else if (rawArgs.x !== undefined && rawArgs.y !== undefined) summary += ` (${rawArgs.x},${rawArgs.y})`;
+						if (rawArgs.text) summary += ` "${String(rawArgs.text).slice(0, 30)}"`;
+					} else if (rawArgs.command) {
+						summary = String(rawArgs.command).slice(0, 80);
+					} else {
+						summary = JSON.stringify(rawArgs).slice(0, 80);
+					}
 				} else if (typeof rawArgs === "string") {
 					summary = rawArgs.slice(0, 80);
 				}
@@ -698,10 +653,8 @@ export function apply(ctx) {
 	// Auto status notification: sync todo_write progress silently to Android status bar (BigText style)
 	ctx.on("tools/result", async (exec, result) => {
 		try {
-			// DSH tools/result emits (exec: ToolExecution, result: ToolExecutionResult)
 			const name = exec?.name;
 			if (name === "todo_write") {
-				// Tool arguments in DSH are stored in `exec.arguments` (fallback to `exec.args` or `exec.input`)
 				const rawArgs = exec.arguments ?? exec.args ?? exec.input ?? {};
 				const args = typeof rawArgs === "string" ? JSON.parse(rawArgs) : rawArgs;
 				const todos = args?.todos || [];
@@ -714,7 +667,6 @@ export function apply(ctx) {
 				const isAllDone = completed === total;
 				const title = "任务已经完成！";
 
-				// 顶部第一行作为焦点摘要展示（去除 >> 箭头，更加干净）
 				let header = "";
 				if (isAllDone) {
 					header = "所有任务均已执行完毕";
@@ -725,8 +677,6 @@ export function apply(ctx) {
 					header = "准备开始执行任务...";
 				}
 
-				// 格式化纯净打勾方框待办清单（Unicode 原生方框符号，非彩色 Emoji）
-				// 已完成: ☑, 进行中: ◉, 待办: ☐
 				const lines = todos.map((t, idx) => {
 					const cleanContent = (t.content || "").trim().replace(/\r?\n/g, " ");
 					if (t.status === "completed") {
@@ -741,8 +691,6 @@ export function apply(ctx) {
 				const divider = "────────────";
 				const content = `${header}\n${divider}\n${lines.join("\n")}`;
 
-				// 仅在任务未全部完成时静默记录待办状态，彻底不发送完成通知
-				// 如果任务全部完成，暂存最后的待办汇总信息，供 Agent Turn 结束时统一消费
 				if (isAllDone) {
 					cachedLastTodoSummary = {
 						title: "任务已经完成！",
@@ -777,7 +725,6 @@ export function apply(ctx) {
 				const textBlocks = contentBlocks.filter((b) => b?.type === "text" && b?.text);
 				const fullText = textBlocks.map((b) => b.text).join("\n").trim();
 				if (fullText) {
-					// 过滤掉 markdown 标题符、加粗符，保留自然段落排版
 					const clean = fullText
 						.replace(/^#+\s+/gm, "")
 						.replace(/\*\*([^*]+)\*\*/g, "$1")
@@ -791,7 +738,7 @@ export function apply(ctx) {
 		} catch (_) {}
 	});
 
-	// 安全切回 background 并灭灯的统一停止/复位收口函数（主屏焦点回收到副屏，并触发完成通知）
+	// Reset to background & notify completion
 	async function safeResetToBackground(reason, opts = {}) {
 		try {
 			const res = await postJson("/api/mode", { mode: "background" });
@@ -802,7 +749,6 @@ export function apply(ctx) {
 			} catch (_) {}
 		}
 
-		// 核心收口：在完成信号处统一触发绿色大鲸鱼高优完成通知（彻底解绑对 todo list 的单一依赖）
 		if (opts.notify === true) {
 			const now = Date.now();
 			if (now - lastCompletionNotifyTime > 1500) {
@@ -833,16 +779,14 @@ export function apply(ctx) {
 		}
 	}
 
-	// 核心全局生命周期：监听 Agent 状态从 running 切换到 idle/ready（单轮问答、执行或指令彻底结束）
 	let agentIsRunning = false;
 	ctx.on("agent/status", async ({ agent, status }) => {
 		if (status === "running") {
 			agentIsRunning = true;
 		} else if ((status === "idle" || status === "ready") && agentIsRunning) {
 			agentIsRunning = false;
-			// 触发唯一完成信号：切回副屏，熄灭前台光效，并发出全局唯一的完成通知
 			const todoSummary = cachedLastTodoSummary;
-			cachedLastTodoSummary = null; // 消费后立刻清空，避免污染下一轮
+			cachedLastTodoSummary = null;
 
 			let sessionTitle = "";
 			try {
@@ -868,7 +812,6 @@ export function apply(ctx) {
 		}
 	});
 
-	// 失败/超时信号：Agent 发生错误或超时中断时，触发紧急安全熔断，切回 background 待机态
 	ctx.on("agent/error", async ({ agent, error }) => {
 		const errDetail = error?.message || (typeof error === "string" ? error : "Unknown error");
 		await safeResetToBackground(`Agent Error / Timeout: ${errDetail}`);
@@ -879,7 +822,6 @@ export function apply(ctx) {
 		}).catch(() => {});
 	});
 
-	// 中止/销毁信号：会话销毁时，清理前台占用并灭灯
 	ctx.on("session/disposed", async (session) => {
 		await safeResetToBackground(`Session Disposed: ${session?.id || "unknown"}`);
 		postJson("/api/task_event", {
@@ -889,14 +831,12 @@ export function apply(ctx) {
 		}).catch(() => {});
 	});
 
-	// Interactive questions: pop up Heads-up Notification & Bottom Sheet card on Android
-	// and race with Web UI (both phone and web can answer, whichever finishes first claims it)
+	// Interactive questions: race between phone and Web UI
 	ctx.on("user-questions/request", async (request, next) => {
 		const requestId = "req_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
 		const phoneController = new AbortController();
 		const webController = new AbortController();
 
-		// Combine caller signal with webController signal so we can abort the web side independently
 		const callerSignal = request?.signal;
 		let webSignal = webController.signal;
 		if (callerSignal) {
@@ -910,7 +850,6 @@ export function apply(ctx) {
 			request.signal = webSignal;
 		}
 
-		// If caller's signal aborts, abort both phone request and web UI
 		if (callerSignal) {
 			callerSignal.addEventListener("abort", () => {
 				phoneController.abort();
@@ -919,7 +858,6 @@ export function apply(ctx) {
 			});
 		}
 
-		// 1. Dispatch question to phone
 		const phonePromise = postJson("/api/question", {
 			request_id: requestId,
 			questions: request?.questions,
@@ -927,21 +865,17 @@ export function apply(ctx) {
 		}, phoneController.signal)
 			.then((res) => {
 				if (res && res.success && Array.isArray(res.answers) && res.answers.length > 0) {
-					// Phone answered! Dismiss Web UI card immediately
 					webController.abort(new Error("answered on phone"));
 					return { answers: res.answers };
 				}
 				throw new Error("phone answer empty or unsuccessful");
 			})
 			.catch(() => {
-				// Phone question failed, cancelled, or offline: wait for Web UI
 				return new Promise(() => {});
 			});
 
-		// 2. Delegate to Web UI as concurrent option
 		const webPromise = (typeof next === "function" ? next() : Promise.reject(new Error("no next handler")))
 			.then((webAnswer) => {
-				// Web answered! Dismiss phone notification and card
 				phoneController.abort();
 				postJson("/api/question/cancel", { request_id: requestId }).catch(() => {});
 				return webAnswer;
@@ -949,14 +883,12 @@ export function apply(ctx) {
 			.catch((err) => {
 				phoneController.abort();
 				postJson("/api/question/cancel", { request_id: requestId }).catch(() => {});
-				// If aborted because phone answered, do not rethrow as unhandled rejection
 				if (webController.signal.aborted) {
 					return new Promise(() => {});
 				}
 				throw err;
 			});
 
-		// Race between phone and web
 		return await Promise.race([phonePromise, webPromise]);
 	}, { prepend: true });
 }
