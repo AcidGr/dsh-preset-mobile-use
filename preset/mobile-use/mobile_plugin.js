@@ -146,6 +146,25 @@ function screenshotScaleText(delivery) {
 
 const SERVER_BASE = process.env.AGENT_VD_SERVER || "http://127.0.0.1:3070";
 
+/**
+ * Drop system-chrome windows (status bar, navigation bar, notification shade, and the
+ * ColorOS smart sidebar) from every tree observation.
+ *
+ * Why this is ON by default: the physical display carries that chrome and the virtual
+ * display carries none of it, so the SAME app screen produced two different trees
+ * depending on which display happened to be the target. Measured on the Settings app,
+ * display 0, unfiltered vs filtered: windows 5 -> 2, total 34 -> 19, and every node that
+ * disappeared was status-bar chrome (clock, battery, signal, WLAN icon). `.settings`
+ * itself kept all of its real controls, so system APPS are untouched — the test is on the
+ * window's OWNER package and its root node's package, never on a node's package alone.
+ *
+ * Set AGENT_NO_SYSTEM_UI=0 to restore the unfiltered tree without touching the server;
+ * the server still honours a plain request with no query parameter, so this switch is the
+ * only place the behaviour is chosen.
+ */
+const DROP_SYSTEM_UI = (process.env.AGENT_NO_SYSTEM_UI || "1") !== "0";
+const DUMP_UI_PATH = DROP_SYSTEM_UI ? "/api/dump_ui?no_system_ui=1" : "/api/dump_ui";
+
 async function postJson(path, body, signal) {
 	const resp = await fetch(`${SERVER_BASE}${path}`, {
 		method: "POST",
@@ -292,7 +311,7 @@ export function apply(ctx) {
 		},
 		async execute(args) {
 			try {
-				const resp = await fetch(`${SERVER_BASE}/api/dump_ui`);
+				const resp = await fetch(`${SERVER_BASE}${DUMP_UI_PATH}`);
 				const text = await resp.text();
 				try {
 					const data = JSON.parse(text);
