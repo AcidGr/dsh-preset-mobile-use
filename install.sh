@@ -41,6 +41,17 @@ if ! node "$DIR/check-preset.mjs" "$SRC/mobile_plugin.js"; then
 	exit 1
 fi
 
+# The other half of the same gate, and for the same reason. The copy below moves three
+# files, not one — agent.cordis.yml among them — and every `name:` row in that file is
+# resolved by DSH at mount time. An unresolvable row fails exactly like an unimportable
+# plugin: the preset does not mount, and DSH then refuses to resume any session in this
+# workspace. check-preset.mjs never reads agent.cordis.yml, so such a row used to pass the
+# gate and only surface later inside DSH. Still before the copy.
+if ! node "$DIR/check-composition.mjs" "$SRC/agent.cordis.yml"; then
+	echo "refusing to install: the composition names a plugin that cannot be resolved" >&2
+	exit 1
+fi
+
 cp -f "$SRC/agent.cordis.yml" "$SRC/mobile_plugin.js" "$SRC/preset.yml" "$DST/"
 cp -f "$SRC/mobile_plugin.js" "$DIR/lib/index.js"
 
