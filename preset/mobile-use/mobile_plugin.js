@@ -231,13 +231,59 @@ async function captureUiDumpWithRetry(maxRetries = 2, delayMs = 600) {
 	for (let attempt = 0; attempt <= maxRetries; attempt++) {
 		lastText = await captureUiDump();
 		if (!isTransientEmptyTree(lastText)) {
+			lastUiDumpText = lastText;
 			return lastText;
 		}
 		if (attempt < maxRetries) {
 			await new Promise((resolve) => setTimeout(resolve, delayMs));
 		}
 	}
+	lastUiDumpText = lastText;
 	return lastText;
+}
+
+let lastUiDumpText = "";
+
+/** Resolve target node ID into center coordinates using cached or fresh dump tree. */
+// ponytail: only numeric node ID or 'node:ID' supported. Upgrade to viewId/resource-id regex if requested.
+export function findTargetCoordinates(dumpText, target) {
+	if (!dumpText || target == null) return null;
+	const clean = String(target).replace(/^node:/i, "").trim();
+	if (!clean || !/^\d+$/.test(clean)) return null;
+
+	for (const rawLine of dumpText.split("\n")) {
+		const line = rawLine.trim();
+		if (!line.startsWith(clean + " ")) continue;
+		const m = line.match(/^(\d+)\s+/);
+		if (!m || m[1] !== clean) continue;
+
+		const unquoted = line.replace(/"(?:[^"\\]|\\.)*"/g, '""');
+		const targetMatch = unquoted.match(/\btarget=\d+@(-?\d+),(-?\d+)(?:\s|$)/);
+		if (targetMatch) {
+			return { x: parseInt(targetMatch[1], 10), y: parseInt(targetMatch[2], 10), id: clean };
+		}
+		const boundsMatch = unquoted.match(/(?:^|\s)(-?\d+),(-?\d+),(-?\d+),(-?\d+)(?:\s|$)/);
+		if (boundsMatch) {
+			const l = parseInt(boundsMatch[1], 10);
+			const t = parseInt(boundsMatch[2], 10);
+			const r = parseInt(boundsMatch[3], 10);
+			const b = parseInt(boundsMatch[4], 10);
+			return { x: Math.round((l + r) / 2), y: Math.round((t + b) / 2), id: clean };
+		}
+	}
+	return null;
+}
+
+async function resolveTargetCoordinates(target) {
+	if (!lastUiDumpText) {
+		await captureUiDumpWithRetry();
+	}
+	let match = findTargetCoordinates(lastUiDumpText, target);
+	if (!match) {
+		await captureUiDumpWithRetry();
+		match = findTargetCoordinates(lastUiDumpText, target);
+	}
+	return match;
 }
 
 /** Unified observation: returns dump_ui text or visual screenshot. */
@@ -266,7 +312,13 @@ export function apply(ctx) {
 	// 1. mobile: Unified screen interaction and perception tool
 	ctx.tools.register(defineTool({
 		name: "mobile",
-		description: "Interact with and observe the mobile device. Every physical action (click, swipe, type, key, wait, launch_app) automatically captures and returns the updated screen state (UI hierarchy tree by default, or visual screenshot). Call action='observe' to inspect the screen without moving.",
+		description:
+			"Control native apps and system settings on the user's Android device by reading or operating UI. Prefer purpose-built connectors, APIs, or CLIs when available.\n\n" +
+			"- Use `mobile` for all Android app interactions (discovery, launching, touch gestures, typing, and key events).\n" +
+			"- Do not use other technologies or shell workarounds for mobile interactions, unless specifically requested by the user (e.g. `am start`, `input tap`, `screencap`, raw Xposed hooks).\n" +
+			"- Prefer a dedicated plugin or skill when it can complete the task; use Mobile Use for interactions that are not exposed through a more specific interface.\n" +
+			"- Performing any physical action automatically captures and returns the updated screen state in the tool result.\n" +
+			"- You can specify `mode='tree'` (default, structured accessibility hierarchy dump) or `mode='visual'` (screenshot image) to declare your desired observation format.",
 		parameters: {
 			action: {
 				type: "string",
@@ -288,7 +340,7 @@ export function apply(ctx) {
 			coordinate: {
 				type: "array",
 				items: { type: "integer" },
-				description: "[x, y] coordinates in display pixels for click (tap/long-press), or starting coordinates for swipe.",
+				description: "[x, y] coordinates in display pixels for click (tap/long-press), or starting coordinates for swipe. Can be omitted if target is specified.",
 			},
 			end_coordinate: {
 				type: "array",
@@ -321,7 +373,7 @@ export function apply(ctx) {
 			},
 			target: {
 				type: "string",
-				description: "Optional node ID from dump tree (e.g. '146') for direct input. Omit to type into focused field.",
+				description: "Optional node ID from dump tree (e.g. '146') for click (auto-resolves center coordinates) or direct input. Omit to type into focused field.",
 			},
 			duration_ms: {
 				type: "integer",
@@ -362,10 +414,20 @@ export function apply(ctx) {
 				}
 
 				case "click": {
-					const x = args.coordinate?.[0] ?? args.x;
-					const y = args.coordinate?.[1] ?? args.y;
+					let x = args.coordinate?.[0] ?? args.x;
+					let y = args.coordinate?.[1] ?? args.y;
+					let resolvedTarget = null;
+					if ((x == null || y == null) && args.target !== undefined && args.target !== null && String(args.target).trim() !== "") {
+						const resolved = await resolveTargetCoordinates(args.target);
+						if (!resolved) {
+							return { message: `Error: target '${args.target}' not found in current UI dump tree. Please call action='observe' to refresh the tree, or specify [x, y] coordinates.` };
+						}
+						x = resolved.x;
+						y = resolved.y;
+						resolvedTarget = resolved.id;
+					}
 					if (x == null || y == null) {
-						return { message: "Error: action 'click' requires coordinates: coordinate: [x, y] (or x and y)." };
+						return { message: "Error: action 'click' requires coordinates: coordinate: [x, y] (or x and y) or target (e.g. '146')." };
 					}
 					const payload = { x: Math.round(x), y: Math.round(y) };
 					if (typeof args.duration_ms === "number" && args.duration_ms > 0) {
@@ -376,9 +438,10 @@ export function apply(ctx) {
 						if (!res.success) {
 							return { message: `Click failed at (${x}, ${y}): ${res.message || "unknown error"}` };
 						}
+						const targetDesc = resolvedTarget ? `target ${resolvedTarget} at ` : "";
 						const actionDesc = payload.duration_ms
-							? `OK: Long-pressed (${x}, ${y}) for ${payload.duration_ms}ms`
-							: `OK: Tapped (${x}, ${y})`;
+							? `OK: Long-pressed ${targetDesc}(${x}, ${y}) for ${payload.duration_ms}ms`
+							: `OK: Tapped ${targetDesc}(${x}, ${y})`;
 						await new Promise((r) => setTimeout(r, 350));
 						return await executeActionAndObserve(actionDesc, res.notice, obsMode, ctx);
 					} catch (err) {
@@ -596,6 +659,7 @@ export function apply(ctx) {
 						summary = `[${rawArgs.action}]`;
 						if (rawArgs.coordinate) summary += ` (${rawArgs.coordinate.join(",")})`;
 						else if (rawArgs.x !== undefined && rawArgs.y !== undefined) summary += ` (${rawArgs.x},${rawArgs.y})`;
+						else if (rawArgs.target) summary += ` target=${rawArgs.target}`;
 						if (rawArgs.text) summary += ` "${String(rawArgs.text).slice(0, 30)}"`;
 					} else if (rawArgs.command) {
 						summary = String(rawArgs.command).slice(0, 80);
