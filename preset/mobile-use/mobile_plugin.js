@@ -857,6 +857,13 @@ export function apply(ctx) {
 				if (!sessionTitle && agent?.session) {
 					sessionTitle = agent.session.title || agent.session.meta?.title || "";
 				}
+				if (!sessionTitle) {
+					const cwd = process.cwd();
+					const parts = cwd.split("/").filter(Boolean);
+					if (parts.length > 0) {
+						sessionTitle = parts[parts.length - 1];
+					}
+				}
 			} catch (_) {}
 
 			const finalContent = lastAssistantMessage || todoSummary?.content || "所有执行事项均已处理完毕";
@@ -867,8 +874,8 @@ export function apply(ctx) {
 			} catch (_) {}
 
 			await safeResetToBackground(`Agent Turn Completed (status: ${status})`, {
-				title: "任务已经完成！",
-				subtext: sessionTitle || lastUserPromptSummary || "",
+				title: "已完成",
+				subtext: sessionTitle || "任务已完成",
 				content: finalContent,
 				sessionId: currentSessionId,
 				total: todoSummary?.total ?? 0,
