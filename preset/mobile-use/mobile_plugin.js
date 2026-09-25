@@ -365,7 +365,7 @@ export function apply(ctx) {
 			},
 			text: {
 				type: "string",
-				description: "Text to type; key name ('BACK', 'HOME', 'ENTER') for key; package name for launch_app; app query for list_apps; or mode ('foreground'|'background') for switch_mode.",
+				description: "Text to type; key name ('BACK', 'HOME', 'ENTER') for key; package name for launch_app; app query for list_apps; or mode ('foreground'|'background'|'idle') for switch_mode.",
 			},
 			activity: {
 				type: "string",
@@ -797,14 +797,14 @@ export function apply(ctx) {
 		} catch (_) {}
 	});
 
-	// Reset to background & notify completion
-	async function safeResetToBackground(reason, opts = {}) {
+	// Reset to idle (display -1, unfocused) & notify completion
+	async function safeResetToIdle(reason, opts = {}) {
 		try {
-			const res = await postJson("/api/mode", { mode: "background" });
-			fs.appendFileSync("/tmp/agent_notify.log", `[${new Date().toISOString()}] Reset to background triggered by: ${reason} (mode: ${res?.mode}, target_display_id: ${res?.target_display_id})\n`);
+			const res = await postJson("/api/mode", { mode: "idle" });
+			fs.appendFileSync("/tmp/agent_notify.log", `[${new Date().toISOString()}] Reset to idle triggered by: ${reason} (mode: ${res?.mode}, target_display_id: ${res?.target_display_id})\n`);
 		} catch (err) {
 			try {
-				fs.appendFileSync("/tmp/agent_notify.log", `[${new Date().toISOString()}] Failed to reset to background (${reason}): ${err?.message || err}\n`);
+				fs.appendFileSync("/tmp/agent_notify.log", `[${new Date().toISOString()}] Failed to reset to idle (${reason}): ${err?.message || err}\n`);
 			} catch (_) {}
 		}
 
@@ -873,7 +873,7 @@ export function apply(ctx) {
 				fs.appendFileSync("/tmp/agent_notify.log", `[${new Date().toISOString()}] Agent Turn Completed. agent.id=${agent?.id} session.id=${agent?.session?.id} finalSessionId=${currentSessionId}\n`);
 			} catch (_) {}
 
-			await safeResetToBackground(`Agent Turn Completed (status: ${status})`, {
+			await safeResetToIdle(`Agent Turn Completed (status: ${status})`, {
 				title: "已完成",
 				subtext: sessionTitle || "任务已完成",
 				content: finalContent,
@@ -887,7 +887,7 @@ export function apply(ctx) {
 
 	ctx.on("agent/error", async ({ agent, error }) => {
 		const errDetail = error?.message || (typeof error === "string" ? error : "Unknown error");
-		await safeResetToBackground(`Agent Error / Timeout: ${errDetail}`);
+		await safeResetToIdle(`Agent Error / Timeout: ${errDetail}`);
 		postJson("/api/task_event", {
 			type: "agent_error",
 			error: errDetail,
@@ -896,7 +896,7 @@ export function apply(ctx) {
 	});
 
 	ctx.on("session/disposed", async (session) => {
-		await safeResetToBackground(`Session Disposed: ${session?.id || "unknown"}`);
+		await safeResetToIdle(`Session Disposed: ${session?.id || "unknown"}`);
 		postJson("/api/task_event", {
 			type: "session_disposed",
 			session_id: session?.id,
