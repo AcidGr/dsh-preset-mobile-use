@@ -381,8 +381,8 @@ export function apply(ctx) {
 			},
 			mode: {
 				type: "string",
-				enum: ["tree", "visual"],
-				description: "Observation mode: 'tree' (default, returns structured accessibility UI dump) or 'visual' (returns screenshot image).",
+				enum: ["tree", "visual", "foreground", "background", "idle"],
+				description: "Observation mode: 'tree' (default) or 'visual' (screenshot); or target mode for switch_mode ('foreground'|'background'|'idle').",
 			},
 		},
 		output: {
@@ -575,7 +575,17 @@ export function apply(ctx) {
 				}
 
 				case "switch_mode": {
-					const targetMode = args.text || args.mode || "background";
+					let targetMode = "idle";
+					const raw = String(args.text || args.mode || "").trim().toLowerCase();
+					if (raw.includes("fore") || raw === "0" || raw === "fg") {
+						targetMode = "foreground";
+					} else if (raw.includes("back") || raw.includes("virt") || raw === "bg") {
+						targetMode = "background";
+					} else if (raw.includes("idle") || raw.includes("standby") || raw === "-1" || raw.includes("none")) {
+						targetMode = "idle";
+					} else if (raw && raw !== "tree" && raw !== "visual") {
+						targetMode = raw;
+					}
 					try {
 						const res = await postJson("/api/mode", { mode: targetMode });
 						if (!res.success) {
