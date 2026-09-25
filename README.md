@@ -35,10 +35,10 @@ Agent 自动在后台独立副屏中拉起系统便签、选择系统画笔、�
 
 1. **强依赖 KSU 底座模块**：
    - 本预设必须配合底层驱动模块 **[agent-mobile-use](https://github.com/AcidGr/agent-mobile-use)** 一起使用；
-   - 必须先在手机上通过 **KernelSU / APatch / Magisk** 刷入 `agent-mobile-use-ksu-v3.9.zip`，并保持后台 `vd_server` 网关服务运行（默认监听 `http://127.0.0.1:3070`）。
+   - 必须先在手机上通过 **KernelSU / APatch / Magisk** 刷入 `agent-mobile-use-ksu.zip`（最新版 `v0.6.1-alpha`），并保持后台 `vd_server` 网关服务运行（默认监听 `http://127.0.0.1:3070`）。
 2. **手机环境要求**：
    - **操作系统**：Android 15 / Android 16（实测实验环境基于 ColorOS 16，Linux 6.12 内核）；
-   - **Root 与 Xposed**：手机必须拥有完整的 Root 特权，并建议启用 **LSPosed** 挂载模块内的隐形补丁以实现跨屏焦点隔离与免软键盘弹窗。
+   - **Root 与 Xposed**：手机必须拥有完整的 Root 特权，并建议启用 **LSPosed** 挂载模块内的隐形补丁以实现流体云交互通知。
 
 ---
 
@@ -47,9 +47,9 @@ Agent 自动在后台独立副屏中拉起系统便签、选择系统画笔、�
 - **完全后台静默 (Headless Execution)**：
   自动化应用在系统内存中的独立虚拟副屏（Display > 0）上渲染与操作，手机物理主屏不跳前台、不抢焦点、可以正常日常使用或息屏。
 - **超高精度物理手势调度**：
-  支持精细毫秒级滑动、贝塞尔拟合触控（`mobile_swipe` / `mobile_click`），不仅能点按 UI 控件，甚至能实现像素级的连续自主手绘与拖拽。
+  支持精细毫秒级滑动、贝塞尔拟合触控，不仅能点按 UI 控件，甚至能实现像素级的连续自主手绘与拖拽。
 - **双模感知 (Dual Perception)**：
-  提供扁平化元素列表（`mobile_dump_ui`，每元素一行、坐标即绝对像素）与实时副屏高分辨率快照（`mobile_screenshot`）。
+  提供扁平化元素列表（每元素一行的扁平文本：状态行 + 列名单行 + `id type "name" x1,y1,x2,y2 flags`）与实时副屏高分辨率快照（JPEG q92 降采样透传）。
 - **免软键盘文字灌入 (Silent Text Injection)**：
   通过系统的无障碍剪贴板与原生文本注入，中英文长难句与符号一键送达，完全不在主屏弹出软键盘。
 
@@ -61,17 +61,12 @@ Agent 自动在后台独立副屏中拉起系统便签、选择系统画笔、�
 
 | 工具名称 | 功能描述 |
 | :--- | :--- |
-| `mobile_status` | 查询当前副屏运行状态、Display ID、宽度、高度与 DPI 参数 |
-| `mobile_screenshot` | 截取副屏高分辨率快照（1/3 降采样 JPEG q92） |
-| `mobile_dump_ui` | 获取当前副屏元素列表（**每元素一行**的扁平文本：状态行 + 列名单行 + `id type "name" x1,y1,x2,y2 flags`），坐标已是绝对像素 |
-| `mobile_click` | 向指定 `(x, y)` 发送物理触控点击事件 |
-| `mobile_swipe` | 模拟平滑滑动手势、复杂手绘线条或长按操作 |
-| `mobile_type` | 静默将文本灌入当前焦点输入框（0 键盘弹窗） |
-| `mobile_press_key` | 向副屏发送物理按键（BACK, HOME, ENTER 等） |
-| `mobile_launch_app` | 在副屏定向拉起目标应用或 Activity |
-| `mobile_shell` | 在手机宿主环境中执行特权 Shell 命令 |
+| `mobile` | **移动端统一操控与感知核心工具**：集成了屏幕状态观测（`observe`，支持 `tree` 扁平控件树与 `visual` 高清视觉快照）、物理触控（`click`，支持绝对坐标与节点 ID 自动居中）、滑动手势（`swipe`）、免键盘文本注入（`type`）、系统物理按键（`key`）、延时等待（`wait`）、应用定向启动（`launch_app`）、已装应用检索（`list_apps`）、前后台模式切换（`switch_mode`）及副屏运行状态查询（`status`）。任何物理操作均自动捕获执行后的最新屏幕状态并返回单轮闭环结果。 |
+| `mobile_shell` | **Android 特权命令执行工具**：在手机宿主环境中直接执行特权 root shell 命令。 |
 
-> **提示（零开销自动通知）**：本预设无需模型手动调用通知工具。宿主系统已自动监听 `todo_write` 的待办状态，任何任务进展都会在后台静默实时同步更新至 Android 系统状态栏与通知中心。
+> **提示（零开销自动通知与交互确认）**：
+> - 宿主系统已自动监听 `todo_write` 的待办状态，任何任务进展都会在后台静默实时同步更新至 Android 状态栏与流体云通知。
+> - 在触发 `ask_user_question` 等交互提问时，手机端将弹出原生 BottomSheet 卡片与流体云胶囊，支持在手机与 Web 界面双向极速确认。
 
 ---
 
@@ -128,10 +123,10 @@ The entire drawing sequence was executed silently in the background virtual disp
 
 1. **Underlying KSU Module Dependency**:
    - Requires the companion low-level driver module: **[agent-mobile-use](https://github.com/AcidGr/agent-mobile-use)**.
-   - You must first flash `agent-mobile-use-ksu-v3.9.zip` via **KernelSU / APatch / Magisk** on your Android device and ensure the background `vd_server` gateway is active (default: `http://127.0.0.1:3070`).
+   - You must first flash `agent-mobile-use-ksu.zip` (latest `v0.6.1-alpha`) via **KernelSU / APatch / Magisk** on your Android device and ensure the background `vd_server` gateway is active (default: `http://127.0.0.1:3070`).
 2. **Target Device Environment**:
    - **OS**: Android 15 / 16 (Verified on ColorOS 16, Linux Kernel 6.12);
-   - **Root & LSPosed**: Full Root privileges required; LSPosed recommended for window manager focus isolation and soft keyboard suppression.
+   - **Root & LSPosed**: Full Root privileges required; LSPosed recommended for Fluid Cloud notification hooks.
 
 ---
 
@@ -140,9 +135,9 @@ The entire drawing sequence was executed silently in the background virtual disp
 - **100% Background Headless Execution**:
   Apps run and render entirely on an independent secondary Virtual Display (Display > 0). The physical display 0 remains completely undisturbed.
 - **Precision Gesture Control**:
-  Enables fine touch gestures and micro-swipes (`mobile_swipe` / `mobile_click`) capable of driving creative canvas drawing.
+  Enables fine touch gestures and micro-swipes capable of driving creative canvas drawing.
 - **Dual Perception Engine**:
-  Combines a flat element listing (`mobile_dump_ui`: one line per element, coordinates already absolute display pixels) with real-time visual screenshots (`mobile_screenshot`).
+  Combines a flat element listing (one line per element, coordinates already absolute display pixels) with real-time visual screenshots.
 - **Silent Text Injection**:
   Injects Chinese, numbers, symbols, and long paragraphs directly into the input target without popping up the on-screen soft keyboard.
 
