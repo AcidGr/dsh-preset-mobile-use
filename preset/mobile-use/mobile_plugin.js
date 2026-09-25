@@ -781,7 +781,7 @@ export function apply(ctx) {
 	let lastUserPromptSummary = "";
 	let lastAssistantMessage = "";
 
-	ctx.on("session/event", (_session, event) => {
+	ctx.on("session/event", (session, event) => {
 		try {
 			if (event?.type === "user/message") {
 				const text = event?.data?.content?.[0]?.text || event?.data?.text || "";
@@ -789,6 +789,26 @@ export function apply(ctx) {
 					const clean = text.trim().replace(/\r?\n/g, " ");
 					lastUserPromptSummary = clean.slice(0, 30);
 				}
+				const sid = session?.id || session?.meta?.id || "";
+				let sessionTitle = "";
+				try {
+					if (ctx.sessionTitle && typeof ctx.sessionTitle.get === "function" && session) {
+						sessionTitle = ctx.sessionTitle.get(session)?.title || "";
+					}
+					if (!sessionTitle && session) {
+						sessionTitle = session.title || session.meta?.title || "";
+					}
+				} catch (_) {}
+				postJson("/api/task_event", {
+					type: "agent_status",
+					status: "running",
+					session_id: sid,
+					session_title: sessionTitle || "移动端任务",
+				}).catch((err) => {
+					try {
+						fs.appendFileSync("/tmp/agent_notify.log", `[${new Date().toISOString()}] Failed to post running status (user/message): ${err?.message || err}\n`);
+					} catch (_) {}
+				});
 			} else if (event?.type === "assistant/message") {
 				const contentBlocks = event?.data?.message?.content || [];
 				const textBlocks = contentBlocks.filter((b) => b?.type === "text" && b?.text);
