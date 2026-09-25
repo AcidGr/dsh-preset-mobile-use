@@ -784,6 +784,7 @@ export function apply(ctx) {
 	ctx.on("session/event", (_session, event) => {
 		try {
 			if (event?.type === "user/message") {
+				postJson("/api/task_event", { type: "agent_status", status: "running" }).catch(() => {});
 				const text = event?.data?.content?.[0]?.text || event?.data?.text || "";
 				if (text) {
 					const clean = text.trim().replace(/\r?\n/g, " ");
@@ -854,8 +855,10 @@ export function apply(ctx) {
 	ctx.on("agent/status", async ({ agent, status }) => {
 		if (status === "running") {
 			agentIsRunning = true;
+			postJson("/api/task_event", { type: "agent_status", status: "running" }).catch(() => {});
 		} else if ((status === "idle" || status === "ready") && agentIsRunning) {
 			agentIsRunning = false;
+			postJson("/api/task_event", { type: "agent_status", status: "idle" }).catch(() => {});
 			const todoSummary = cachedLastTodoSummary;
 			cachedLastTodoSummary = null;
 
