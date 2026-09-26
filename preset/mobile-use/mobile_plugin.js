@@ -400,7 +400,8 @@ export function apply(ctx) {
 			"- Do not use other technologies or shell workarounds for mobile interactions, unless specifically requested by the user (e.g. `am start`, `input tap`, `screencap`, raw Xposed hooks).\n" +
 			"- Prefer a dedicated plugin or skill when it can complete the task; use Mobile Use for interactions that are not exposed through a more specific interface.\n" +
 			"- Performing any physical action automatically captures and returns the updated screen state in the tool result.\n" +
-			"- You can specify `mode='tree'` (default, structured accessibility hierarchy dump) or `mode='visual'` (screenshot image) to declare your desired observation format.",
+			"- You can specify `mode='tree'` (default, structured accessibility hierarchy dump) or `mode='visual'` (screenshot image) to declare your desired observation format.\n" +
+			"- Operating modes: 'foreground' (physical Display 0 visible, with touch glow), 'background' (isolated virtual display, completely silent), or 'idle' (standby/disarmed, Display -1). Use action='switch_mode' to switch modes with automatic task migration.",
 		parameters: {
 			action: {
 				type: "string",
@@ -673,7 +674,8 @@ export function apply(ctx) {
 						if (!res.success) {
 							return { message: `Failed to switch mode: ${res.message || "unknown error"}` };
 						}
-						return { message: res.message || `Switched to ${res.mode} mode (Display ${res.target_display_id})` };
+						const migrated = res.migrated_component ? ` (Migrated active app: ${res.migrated_component})` : "";
+						return { message: `${res.message || `Switched to ${res.mode} mode (Display ${res.target_display_id})`}${migrated}` };
 					} catch (err) {
 						return { message: `Switch mode error: ${err.message}` };
 					}
