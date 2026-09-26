@@ -35,7 +35,7 @@ Agent 自动在后台独立副屏中拉起系统便签、选择系统画笔、�
 
 1. **强依赖 KSU 底座模块**：
    - 本预设必须配合底层驱动模块 **[agent-mobile-use](https://github.com/AcidGr/agent-mobile-use)** 一起使用；
-   - 必须先在手机上通过 **KernelSU / APatch / Magisk** 刷入 `agent-mobile-use-ksu.zip`（最新版 `v0.6.2-alpha`），并保持后台 `vd_server` 网关服务运行（默认监听 `http://127.0.0.1:3070`）。
+   - 必须先在手机上通过 **KernelSU / APatch / Magisk** 刷入 `agent-mobile-use-ksu.zip`（最新版 `v0.6.3-alpha`），并保持后台 `vd_server` 网关服务运行（默认监听 `http://127.0.0.1:3070`）。
 2. **手机环境要求**：
    - **操作系统**：Android 15 / Android 16（实测实验环境基于 ColorOS 16，Linux 6.12 内核）；
    - **Root 与 Xposed**：手机必须拥有完整的 Root 特权，并建议启用 **LSPosed** 挂载模块内的隐形补丁以实现流体云交互通知。
@@ -122,7 +122,7 @@ The entire drawing sequence was executed silently in the background virtual disp
 
 1. **Underlying KSU Module Dependency**:
    - Requires the companion low-level driver module: **[agent-mobile-use](https://github.com/AcidGr/agent-mobile-use)**.
-   - You must first flash `agent-mobile-use-ksu.zip` (latest `v0.6.2-alpha`) via **KernelSU / APatch / Magisk** on your Android device and ensure the background `vd_server` gateway is active (default: `http://127.0.0.1:3070`).
+   - You must first flash `agent-mobile-use-ksu.zip` (latest `v0.6.3-alpha`) via **KernelSU / APatch / Magisk** on your Android device and ensure the background `vd_server` gateway is active (default: `http://127.0.0.1:3070`).
 2. **Target Device Environment**:
    - **OS**: Android 15 / 16 (Verified on ColorOS 16, Linux Kernel 6.12);
    - **Root & LSPosed**: Full Root privileges required; LSPosed recommended for Fluid Cloud notification hooks.
