@@ -614,38 +614,6 @@ export function apply(ctx) {
 		},
 	}));
 
-	// 2. mobile_shell: Android root shell execution
-	ctx.tools.register(defineTool({
-		name: "mobile_shell",
-		description: "Execute a root shell command in the Android system.",
-		parameters: {
-			command: {
-				type: "string",
-				required: true,
-				description: "Shell command to execute.",
-			},
-		},
-		output: {
-			schema: {
-				type: "object",
-				additionalProperties: true,
-				properties: {
-					exit_code: { type: "integer" },
-					output: { type: "string" },
-					success: { type: "boolean" },
-				},
-			},
-			render: (_args, val) => [{
-				type: "text",
-				text: `[exit code: ${val.exit_code}]\n${val.output}`,
-			}],
-		},
-		async execute(args) {
-			const res = await postJson("/api/shell", { command: args.command });
-			return res;
-		},
-	}));
-
 	// Report tool execution events to Go gateway for real-time monitoring
 	ctx.on("tools/execute", async (exec, next) => {
 		try {
