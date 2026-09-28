@@ -39,6 +39,10 @@
       }
     }
   },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-tools": "*",
+    "@deepseek-ai/cordis": "*"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/AcidGr/dsh-preset-mobile-use.git"
