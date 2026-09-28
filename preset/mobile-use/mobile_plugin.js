@@ -182,14 +182,6 @@ function screenshotScaleText(delivery) {
 
 const SERVER_BASE = process.env.AGENT_VD_SERVER || "http://127.0.0.1:3070";
 
-/**
- * Drop system-chrome windows (status bar, navigation bar, smart sidebar) so physical
- * display 0 and virtual display produce identical trees for the same app.
- * Set AGENT_NO_SYSTEM_UI=0 to restore unfiltered trees.
- */
-const DROP_SYSTEM_UI = (process.env.AGENT_NO_SYSTEM_UI || "1") !== "0";
-const DUMP_UI_PATH = DROP_SYSTEM_UI ? "/api/dump_ui?no_system_ui=1" : "/api/dump_ui";
-
 let latestNotice = "";
 
 function checkNoticeHeader(resp) {
@@ -285,129 +277,6 @@ async function captureScreenshotAttachment(ctx) {
 	}
 	return {
 		message: `${screenshotScaleText(delivery)} The attachment service is unavailable, so the image is not in your context.`,
-	};
-}
-
-/** Capture accessibility hierarchy dump string. */
-async function captureUiDump() {
-	try {
-		const resp = await fetch(`${SERVER_BASE}${DUMP_UI_PATH}`);
-		checkNoticeHeader(resp);
-		const text = await resp.text();
-		try {
-			const data = JSON.parse(text);
-			if (data && data.success === false) {
-				const reason = data.message || "the gateway refused the dump";
-				return `${reason}\n${data.data || ""}`;
-			}
-			if (data && typeof data.data === "string") {
-				const head = data.message ? `${data.message}\n` : "";
-				return `${head}${data.data}`;
-			}
-		} catch (_) {}
-		return text;
-	} catch (err) {
-		return `Error dumping UI hierarchy: ${err.message}`;
-	}
-}
-
-/**
- * Detect transient empty tree:
- * 1. tree_blocked=1: window exists, but root was empty (firstWindows > 0 && firstSize == 0).
- * 2. no_windows=1: zero windows returned during Activity transition.
- * 3. total=0: 0 actionable or 0 total elements.
- * 4. foreground display: only status bar/system chrome (act_sent <= 2) while main app is transitioning.
- */
-function isTransientEmptyTree(text) {
-	if (!text || typeof text !== "string") return true;
-
-	// 1. 常规空树特征：包含无窗口、树受阻、总节点为0、或应用节点为0
-	if (/tree_blocked=1|no_windows=1|\btotal=0\b|\bapp_nodes=0\b|tree 0 nodes/i.test(text)) return true;
-
-	// 2. 前台物理屏特有特征：只有系统状态栏/侧边栏（可操作节点 <= 2 个）
-	if (text.includes("mode=foreground") && /\bact_sent=[0-2]\b/.test(text)) {
-		return true; // 说明前台只有时钟和灵动岛，主应用还在转场中，自动退避重试！
-	}
-
-	return false;
-}
-
-/** Capture accessibility hierarchy dump string, with auto-retry on transient empty trees. */
-async function captureUiDumpWithRetry(maxRetries = 2, delayMs = 600) {
-	let lastText = "";
-	for (let attempt = 0; attempt <= maxRetries; attempt++) {
-		lastText = await captureUiDump();
-		if (!isTransientEmptyTree(lastText)) {
-			lastUiDumpText = lastText;
-			return lastText;
-		}
-		if (attempt < maxRetries) {
-			await new Promise((resolve) => setTimeout(resolve, delayMs));
-		}
-	}
-	lastUiDumpText = lastText;
-	return lastText;
-}
-
-let lastUiDumpText = "";
-
-/** Resolve target node ID into center coordinates using cached or fresh dump tree. */
-// ponytail: only numeric node ID or 'node:ID' supported. Upgrade to viewId/resource-id regex if requested.
-export function findTargetCoordinates(dumpText, target) {
-	if (!dumpText || target == null) return null;
-	const clean = String(target).replace(/^node:/i, "").trim();
-	if (!clean || !/^\d+$/.test(clean)) return null;
-
-	for (const rawLine of dumpText.split("\n")) {
-		const line = rawLine.trim();
-		if (!line.startsWith(clean + " ")) continue;
-		const m = line.match(/^(\d+)\s+/);
-		if (!m || m[1] !== clean) continue;
-
-		const unquoted = line.replace(/"(?:[^"\\]|\\.)*"/g, '""');
-		const targetMatch = unquoted.match(/\btarget=\d+@(-?\d+),(-?\d+)(?:\s|$)/);
-		if (targetMatch) {
-			return { x: parseInt(targetMatch[1], 10), y: parseInt(targetMatch[2], 10), id: clean };
-		}
-		const boundsMatch = unquoted.match(/(?:^|\s)(-?\d+),(-?\d+),(-?\d+),(-?\d+)(?:\s|$)/);
-		if (boundsMatch) {
-			const l = parseInt(boundsMatch[1], 10);
-			const t = parseInt(boundsMatch[2], 10);
-			const r = parseInt(boundsMatch[3], 10);
-			const b = parseInt(boundsMatch[4], 10);
-			return { x: Math.round((l + r) / 2), y: Math.round((t + b) / 2), id: clean };
-		}
-	}
-	return null;
-}
-
-async function resolveTargetCoordinates(target) {
-	if (!lastUiDumpText) {
-		await captureUiDumpWithRetry();
-	}
-	let match = findTargetCoordinates(lastUiDumpText, target);
-	if (!match) {
-		await captureUiDumpWithRetry();
-		match = findTargetCoordinates(lastUiDumpText, target);
-	}
-	return match;
-}
-
-/** Unified observation: returns dump_ui text or visual screenshot. */
-async function captureObservation(obsMode, ctx) {
-	if (obsMode === "visual") {
-		return await captureScreenshotAttachment(ctx);
-	}
-	const text = await captureUiDumpWithRetry();
-	return { message: text };
-}
-
-/** Execute action and append observation to build a single-turn action-observation loop. */
-async function executeActionAndObserve(headerText, obsMode, ctx) {
-	const obs = await captureObservation(obsMode, ctx);
-	return {
-		message: `[${headerText}]\n\n${obs.message}`,
-		...(obs.attachment ? { attachment: obs.attachment } : {}),
 	};
 }
 
@@ -579,7 +448,6 @@ export function apply(ctx) {
 							return { message: `Execution error (${args.action}): ${err.message}` };
 						}
 					}
-						return { message: `Error: unknown action '${args.action}'. Supported: observe, click, swipe, type, key, wait, launch_app, list_apps, switch_mode.` };
 				}
 			};
 
