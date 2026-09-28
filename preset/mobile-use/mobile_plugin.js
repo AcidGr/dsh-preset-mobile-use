@@ -1,5 +1,6 @@
 import { createRequire } from "node:module";
 import fs from "node:fs";
+import http from "node:http";
 
 function resolveDshTools() {
 	const tryLoad = (basePath) => {
@@ -772,12 +773,17 @@ export function apply(ctx) {
 				const content = `${header}\n${divider}\n${lines.join("\n")}`;
 
 				if (isAllDone) {
-					cachedLastTodoSummary = {
+					const sid = exec?.agent?.id || exec?.agent?.session?.id || exec?.agent?.session?.meta?.id || "";
+					const summary = {
 						title: "任务已经完成！",
 						content,
 						total,
 						completed,
 					};
+					if (sid) {
+						lastTodoSummaryBySession.set(sid, summary);
+					}
+					cachedLastTodoSummary = summary;
 				}
 			}
 		} catch (err) {
@@ -786,6 +792,36 @@ export function apply(ctx) {
 			} catch (_) {}
 		}
 	});
+
+	const runningSessionIds = new Set();
+	const activeWatchRequests = new Map();
+	const lastNotifyTimeBySession = new Map();
+	const lastAssistantMessageBySession = new Map();
+	const lastTodoSummaryBySession = new Map();
+	const lastUserPromptBySession = new Map();
+
+	function ensureSessionWatch(sid, title) {
+		if (!sid) return;
+		if (activeWatchRequests.has(sid)) return;
+		try {
+			const encSid = encodeURIComponent(sid);
+			const encTitle = encodeURIComponent(title || "移动端任务");
+			const req = http.get(`http://127.0.0.1:3070/api/session/watch?session_id=${encSid}&session_title=${encTitle}`, () => {});
+			req.on("error", () => {});
+			activeWatchRequests.set(sid, req);
+		} catch (_) {}
+	}
+
+	function releaseSessionWatch(sid) {
+		if (!sid) return;
+		const req = activeWatchRequests.get(sid);
+		if (req) {
+			activeWatchRequests.delete(sid);
+			try {
+				req.destroy();
+			} catch (_) {}
+		}
+	}
 
 	let lastCompletionNotifyTime = 0;
 	let cachedLastTodoSummary = null;
@@ -801,6 +837,10 @@ export function apply(ctx) {
 				const t = session.title || session.meta?.title;
 				if (t) return t;
 			}
+			const sid = session?.id || session?.meta?.id || "";
+			if (sid && lastUserPromptBySession.has(sid)) {
+				return lastUserPromptBySession.get(sid);
+			}
 			if (lastUserPromptSummary) {
 				return lastUserPromptSummary;
 			}
@@ -812,27 +852,32 @@ export function apply(ctx) {
 
 	ctx.on("session/event", (session, event) => {
 		try {
+			const sid = session?.id || session?.meta?.id || "";
 			if (event?.type === "user/message") {
 				const text = event?.data?.content?.[0]?.text || event?.data?.text || "";
 				if (text) {
 					const clean = text.trim().replace(/\r?\n/g, " ");
 					lastUserPromptSummary = clean.slice(0, 30);
+					if (sid) lastUserPromptBySession.set(sid, lastUserPromptSummary);
 				}
-				const sid = session?.id || session?.meta?.id || "";
+				const title = resolveSessionTitle(session);
+				if (sid) {
+					runningSessionIds.add(sid);
+					ensureSessionWatch(sid, title);
+				}
 				postJson("/api/task_event", {
 					type: "agent_status",
 					status: "running",
 					session_id: sid,
-					session_title: resolveSessionTitle(session),
+					session_title: title,
 				}).catch((err) => {
 					try {
 						fs.appendFileSync("/tmp/agent_notify.log", `[${new Date().toISOString()}] Failed to post running status (user/message): ${err?.message || err}\n`);
 					} catch (_) {}
 				});
 			} else if (event?.type === "session/title") {
-				const sid = session?.id || session?.meta?.id || "";
 				const newTitle = event?.data?.title;
-				if (sid && newTitle) {
+				if (sid && newTitle && runningSessionIds.has(sid)) {
 					postJson("/api/task_event", {
 						type: "agent_status",
 						status: "running",
@@ -851,6 +896,7 @@ export function apply(ctx) {
 						.replace(/`([^`]+)`/g, "$1")
 						.trim();
 					if (clean) {
+						if (sid) lastAssistantMessageBySession.set(sid, clean);
 						lastAssistantMessage = clean;
 					}
 				}
@@ -860,10 +906,20 @@ export function apply(ctx) {
 
 	// Reset to idle (display -1, unfocused) & notify completion
 	async function safeResetToIdle(reason, opts = {}) {
+		const sessionId = opts.sessionId || opts.session_id || "";
+		releaseSessionWatch(sessionId);
+
 		try {
-			postJson("/api/task_event", { type: "agent_status", status: "idle" }).catch(() => {});
-			const res = await postJson("/api/mode", { mode: "idle" });
-			fs.appendFileSync("/tmp/agent_notify.log", `[${new Date().toISOString()}] Reset to idle triggered by: ${reason} (mode: ${res?.mode}, target_display_id: ${res?.target_display_id})\n`);
+			postJson("/api/task_event", {
+				type: "agent_status",
+				status: "idle",
+				session_id: sessionId,
+				session_title: opts.subtext || "",
+			}).catch(() => {});
+			if (runningSessionIds.size === 0) {
+				const res = await postJson("/api/mode", { mode: "idle" });
+				fs.appendFileSync("/tmp/agent_notify.log", `[${new Date().toISOString()}] Reset to idle triggered by: ${reason} (mode: ${res?.mode}, target_display_id: ${res?.target_display_id})\n`);
+			}
 		} catch (err) {
 			try {
 				fs.appendFileSync("/tmp/agent_notify.log", `[${new Date().toISOString()}] Failed to reset to idle (${reason}): ${err?.message || err}\n`);
@@ -872,7 +928,9 @@ export function apply(ctx) {
 
 		if (opts.notify === true) {
 			const now = Date.now();
-			if (now - lastCompletionNotifyTime > 1500) {
+			const lastNotify = (sessionId ? lastNotifyTimeBySession.get(sessionId) : 0) || lastCompletionNotifyTime;
+			if (now - lastNotify > 1000) {
+				if (sessionId) lastNotifyTimeBySession.set(sessionId, now);
 				lastCompletionNotifyTime = now;
 				try {
 					const title = opts.title || "任务已经完成！";
@@ -880,7 +938,6 @@ export function apply(ctx) {
 					const content = opts.content || "所有执行事项均已处理完毕";
 					const total = typeof opts.total === "number" ? opts.total : 0;
 					const completed = typeof opts.completed === "number" ? opts.completed : 0;
-					const sessionId = opts.sessionId || opts.session_id || "";
 
 					await postJson("/api/notify", {
 						title,
@@ -892,7 +949,7 @@ export function apply(ctx) {
 						completed,
 						is_completed: true,
 					});
-					fs.appendFileSync("/tmp/agent_notify.log", `[${new Date().toISOString()}] Sent completion notification via reset signal: ${title} (subtext: ${subtext})\n`);
+					fs.appendFileSync("/tmp/agent_notify.log", `[${new Date().toISOString()}] Sent completion notification via reset signal for ${sessionId}: ${title} (subtext: ${subtext})\n`);
 				} catch (err) {
 					try {
 						fs.appendFileSync("/tmp/agent_notify.log", `[${new Date().toISOString()}] Failed to send completion notification: ${err?.message || err}\n`);
@@ -902,34 +959,48 @@ export function apply(ctx) {
 		}
 	}
 
-	let agentIsRunning = false;
 	ctx.on("agent/status", async (payload) => {
 		const status = payload?.status;
 		const agent = payload?.agent;
 		const currentSessionId = agent?.id || agent?.session?.id || agent?.session?.meta?.id || "";
 
 		if (status === "running") {
-			agentIsRunning = true;
+			const title = resolveSessionTitle(agent?.session);
+			if (currentSessionId) {
+				runningSessionIds.add(currentSessionId);
+				ensureSessionWatch(currentSessionId, title);
+			}
 			postJson("/api/task_event", {
 				type: "agent_status",
 				status: "running",
 				session_id: currentSessionId,
-				session_title: resolveSessionTitle(agent?.session),
+				session_title: title,
 			}).catch(() => {});
 		} else if (status === "idle" || status === "ready") {
-			if (!agentIsRunning) {
+			if (currentSessionId && !runningSessionIds.has(currentSessionId)) {
 				return;
 			}
-			agentIsRunning = false;
-			postJson("/api/task_event", { type: "agent_status", status: "idle" }).catch(() => {});
-			const todoSummary = cachedLastTodoSummary;
+			if (currentSessionId) {
+				runningSessionIds.delete(currentSessionId);
+			}
+			postJson("/api/task_event", {
+				type: "agent_status",
+				status: "idle",
+				session_id: currentSessionId,
+				session_title: resolveSessionTitle(agent?.session),
+			}).catch(() => {});
+
+			const todoSummary = (currentSessionId ? lastTodoSummaryBySession.get(currentSessionId) : null) || cachedLastTodoSummary;
+			if (currentSessionId) lastTodoSummaryBySession.delete(currentSessionId);
 			cachedLastTodoSummary = null;
 
 			const sessionTitle = resolveSessionTitle(agent?.session);
-			const finalContent = lastAssistantMessage || todoSummary?.content || "所有执行事项均已处理完毕";
+			const finalContent = (currentSessionId ? lastAssistantMessageBySession.get(currentSessionId) : null) || lastAssistantMessage || todoSummary?.content || "所有执行事项均已处理完毕";
+			if (currentSessionId) lastAssistantMessageBySession.delete(currentSessionId);
 			lastAssistantMessage = "";
+
 			try {
-				fs.appendFileSync("/tmp/agent_notify.log", `[${new Date().toISOString()}] Agent Turn Completed. agent.id=${agent?.id} session.id=${agent?.session?.id} finalSessionId=${currentSessionId}\n`);
+				fs.appendFileSync("/tmp/agent_notify.log", `[${new Date().toISOString()}] Agent Turn Completed. session.id=${currentSessionId} remainingActive=${runningSessionIds.size}\n`);
 			} catch (_) {}
 
 			const isAborted = agent?.phase?.abort?.signal?.aborted;
@@ -946,12 +1017,16 @@ export function apply(ctx) {
 	});
 
 	ctx.on("agent/error", async ({ agent, error }) => {
+		const currentSessionId = agent?.id || agent?.session?.id || agent?.session?.meta?.id || "";
+		if (currentSessionId) runningSessionIds.delete(currentSessionId);
 		const errDetail = error?.message || (typeof error === "string" ? error : "Unknown error");
-		await safeResetToIdle(`Agent Error / Timeout: ${errDetail}`);
+		await safeResetToIdle(`Agent Error / Timeout: ${errDetail}`, { sessionId: currentSessionId });
 	});
 
 	ctx.on("session/disposed", async (session) => {
-		await safeResetToIdle(`Session Disposed: ${session?.id || "unknown"}`);
+		const currentSessionId = session?.id || session?.meta?.id || "";
+		if (currentSessionId) runningSessionIds.delete(currentSessionId);
+		await safeResetToIdle(`Session Disposed: ${currentSessionId || "unknown"}`, { sessionId: currentSessionId });
 	});
 
 	// Interactive questions: clean race between phone and Web UI without dangling promises
