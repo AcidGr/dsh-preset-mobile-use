@@ -1,7 +1,9 @@
 import assert from "node:assert";
-import { pathToFileURL } from "node:url";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-const mod = await import(pathToFileURL("dsh-preset-mobile-use/preset/mobile-use/mobile_plugin.js").href);
+const pluginPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "preset/mobile-use/mobile_plugin.js");
+const mod = await import(pathToFileURL(pluginPath).href);
 
 let registeredTool = null;
 const ctx = {
