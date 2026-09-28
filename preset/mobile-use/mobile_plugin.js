@@ -528,14 +528,14 @@ export function apply(ctx) {
 	const lastNotifyTimeBySession = new Map();
 	const lastAssistantMessageBySession = new Map();
 	const lastTodoSummaryBySession = new Map();
-	const lastUserPromptBySession = new Map();
+	const sessionTitleBySession = new Map();
 
 	function ensureSessionWatch(sid, title) {
 		if (!sid) return;
 		if (activeWatchRequests.has(sid)) return;
 		try {
 			const encSid = encodeURIComponent(sid);
-			const encTitle = encodeURIComponent(title || "移动端任务");
+			const encTitle = encodeURIComponent(title || "");
 			const req = http.get(`http://127.0.0.1:3070/api/session/watch?session_id=${encSid}&session_title=${encTitle}`, () => {});
 			req.on("error", () => {});
 			activeWatchRequests.set(sid, req);
@@ -559,6 +559,10 @@ export function apply(ctx) {
 
 	function resolveSessionTitle(session) {
 		try {
+			const sid = session?.id || session?.meta?.id || "";
+			if (sid && sessionTitleBySession.has(sid)) {
+				return sessionTitleBySession.get(sid);
+			}
 			if (ctx.sessionTitle && typeof ctx.sessionTitle.get === "function" && session) {
 				const t = ctx.sessionTitle.get(session)?.title;
 				if (t) return t;
@@ -567,29 +571,14 @@ export function apply(ctx) {
 				const t = session.title || session.meta?.title;
 				if (t) return t;
 			}
-			const sid = session?.id || session?.meta?.id || "";
-			if (sid && lastUserPromptBySession.has(sid)) {
-				return lastUserPromptBySession.get(sid);
-			}
-			if (lastUserPromptSummary) {
-				return lastUserPromptSummary;
-			}
-			const parts = process.cwd().split("/").filter(Boolean);
-			if (parts.length > 0) return parts[parts.length - 1];
 		} catch (_) {}
-		return "移动端任务";
+		return "";
 	}
 
 	ctx.on("session/event", (session, event) => {
 		try {
 			const sid = session?.id || session?.meta?.id || "";
 			if (event?.type === "user/message") {
-				const text = event?.data?.content?.[0]?.text || event?.data?.text || "";
-				if (text) {
-					const clean = text.trim().replace(/\r?\n/g, " ");
-					lastUserPromptSummary = clean.slice(0, 30);
-					if (sid) lastUserPromptBySession.set(sid, lastUserPromptSummary);
-				}
 				const title = resolveSessionTitle(session);
 				if (sid) {
 					runningSessionIds.add(sid);
@@ -607,13 +596,16 @@ export function apply(ctx) {
 				});
 			} else if (event?.type === "session/title") {
 				const newTitle = event?.data?.title;
-				if (sid && newTitle && runningSessionIds.has(sid)) {
-					postJson("/api/task_event", {
-						type: "agent_status",
-						status: "running",
-						session_id: sid,
-						session_title: newTitle,
-					}).catch(() => {});
+				if (sid && newTitle) {
+					sessionTitleBySession.set(sid, newTitle);
+					if (runningSessionIds.has(sid)) {
+						postJson("/api/task_event", {
+							type: "agent_status",
+							status: "running",
+							session_id: sid,
+							session_title: newTitle,
+						}).catch(() => {});
+					}
 				}
 			} else if (event?.type === "assistant/message") {
 				const contentBlocks = event?.data?.message?.content || [];
@@ -671,7 +663,8 @@ export function apply(ctx) {
 
 					await postJson("/api/notify", {
 						title,
-						subtext,
+						session_title: opts.sessionTitle || opts.session_title || opts.subtext || "",
+						subtext: opts.sessionTitle || opts.session_title || opts.subtext || "",
 						content,
 						tag: "dsh_agent",
 						session_id: sessionId,
@@ -736,7 +729,8 @@ export function apply(ctx) {
 			const isAborted = agent?.phase?.abort?.signal?.aborted;
 			await safeResetToIdle(`Agent Turn Completed (status: ${status})`, {
 				title: "已完成",
-				subtext: sessionTitle || "任务已完成",
+				sessionTitle: sessionTitle,
+				subtext: sessionTitle,
 				content: finalContent,
 				sessionId: currentSessionId,
 				total: todoSummary?.total ?? 0,
@@ -755,7 +749,10 @@ export function apply(ctx) {
 
 	ctx.on("session/disposed", async (session) => {
 		const currentSessionId = session?.id || session?.meta?.id || "";
-		if (currentSessionId) runningSessionIds.delete(currentSessionId);
+		if (currentSessionId) {
+			runningSessionIds.delete(currentSessionId);
+			sessionTitleBySession.delete(currentSessionId);
+		}
 		await safeResetToIdle(`Session Disposed: ${currentSessionId || "unknown"}`, { sessionId: currentSessionId });
 	});
 
