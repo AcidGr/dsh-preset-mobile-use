@@ -61,7 +61,7 @@ Agent 自动在后台独立副屏中拉起系统便签、选择系统画笔、�
 
 | 工具名称 | 功能描述 |
 | :--- | :--- |
-| `mobile` | **移动端统一操控与感知核心工具**：集成了屏幕状态观测（`observe`，支持 `tree` 扁平控件树与 `visual` 高清标尺视觉快照）、物理触控（`click`，支持绝对坐标与节点 ID 自动居中）、滑动手势（`swipe`）、免键盘文本注入（`type`）、系统物理按键（`key`）、延时等待（`wait`）、应用定向启动（`launch_app`）、已装应用检索（`list_apps`）及三态运行模式切换（`switch_mode`，支持 `foreground` / `background` / `idle` 带应用自动迁移）。任何物理操作均自动捕获执行后的最新屏幕状态并返回单轮闭环结果。 |
+| `mobile` | **移动端统一操控与感知核心工具**：集成了屏幕状态观测（`observe`，支持 `tree` 扁平控件树与 `visual` 缩放视觉快照）、物理触控（`click`，支持绝对坐标与节点 ID 自动居中）、滑动手势（`swipe`）、免键盘文本注入（`type`）、系统物理按键（`key`）、延时等待（`wait`）、应用定向启动（`launch_app`）、已装应用检索（`list_apps`）及三态运行模式切换（`switch_mode`，支持 `foreground` / `background` / `idle` 带应用自动迁移）。任何物理操作均自动捕获执行后的最新屏幕状态并返回单轮闭环结果。 |
 
 > **提示（零开销自动通知与交互确认）**：
 > - 宿主系统已自动监听 `todo_write` 的待办状态，任何任务进展都会在后台静默实时同步更新至 Android 状态栏与流体云通知。
@@ -71,14 +71,13 @@ Agent 自动在后台独立副屏中拉起系统便签、选择系统画笔、�
 
 ### 安装与使用方法
 
-1. **下载预设包**：
-   从本仓库的 `release/` 目录或 GitHub Releases 页面下载 `dsh-preset-mobile-use.zip`（约 17 KB）。
-2. **解压安装**：
-   包内的顶层目录是 `preset/`，而 DSH 只认 `.agent-presets/mobile-use/` —— 直接把包解到 `.agent-presets/` 会得到 `.agent-presets/preset/mobile-use/`，DSH 永远找不到它。所以要用 `-j` 剥掉那一层：
+1. **克隆本仓库**：
+   本预设通过仓库直接安装。DSH 同时读取 `preset/mobile-use/`（源码）与 `lib/index.js`（npm 包入口），两者必须一致，所以安装与更新都走同一个脚本。
+2. **执行安装**：
    ```sh
-   mkdir -p ${DSH_HOME:-$HOME/.dsh}/.agent-presets/mobile-use/
-   unzip -j dsh-preset-mobile-use.zip 'preset/mobile-use/*' -d ${DSH_HOME:-$HOME/.dsh}/.agent-presets/mobile-use/
+   ./install.sh
    ```
+   脚本会依次完成：真加载校验（`check-preset.mjs`）→ 同步 `preset/mobile-use/` 到 `${DSH_HOME:-$HOME/.dsh}/.agent-presets/mobile-use/` → 同步 `preset/mobile-use/mobile_plugin.js` 到 `lib/index.js`。校验不通过就拒绝安装，一个字节都不写。
 3. **启动会话**：
    刷新或重新打开 DSH Web 界面（`http://127.0.0.1:3080`），在右上角预设选择器中切换为 **`mobile-use`**，即可直接开始指挥手机执行自动化任务！
 
@@ -144,12 +143,12 @@ The entire drawing sequence was executed silently in the background virtual disp
 
 ### Preset Installation
 
-1. Download `dsh-preset-mobile-use.zip` from `release/` or GitHub Releases.
-2. The archive's top level is `preset/`, but DSH only reads `.agent-presets/mobile-use/` — extracting it straight into `.agent-presets/` yields `.agent-presets/preset/mobile-use/`, which DSH never looks at. Strip that level with `-j`:
+1. Clone this repository. DSH reads both `preset/mobile-use/` (source) and `lib/index.js` (the npm package entry), and the two must stay identical — so install and update through the same script.
+2. Run the installer:
    ```sh
-   mkdir -p ${DSH_HOME:-$HOME/.dsh}/.agent-presets/mobile-use/
-   unzip -j dsh-preset-mobile-use.zip 'preset/mobile-use/*' -d ${DSH_HOME:-$HOME/.dsh}/.agent-presets/mobile-use/
+   ./install.sh
    ```
+   It load-tests the plugin (`check-preset.mjs`), syncs `preset/mobile-use/` into `${DSH_HOME:-$HOME/.dsh}/.agent-presets/mobile-use/`, then syncs `preset/mobile-use/mobile_plugin.js` into `lib/index.js`. If the gate fails it writes nothing.
 3. Open the DSH Web UI (`http://127.0.0.1:3080`), select **`mobile-use`** from the preset dropdown in the top right, and start prompting!
 
 > **Working on this repository?** DSH loads `${DSH_HOME:-$HOME/.dsh}/.agent-presets/mobile-use/`, a **copy** of `preset/mobile-use/` rather than a symlink, so editing the repo alone changes nothing. Run `./install.sh` after any change: it load-tests the plugin with `check-preset.mjs` and refuses to install anything that cannot mount.
