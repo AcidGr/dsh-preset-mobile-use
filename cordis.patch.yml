@@ -1,3 +1,7 @@
+# Enable DSH's native right-sidebar Browser in Web profiles.
+- id: ui-sidebar-browser
+  disabled: false
+
 # Bundle patch: declare mobile-use agent preset and set as default.
 - id: agent-preset-registry
   config:
