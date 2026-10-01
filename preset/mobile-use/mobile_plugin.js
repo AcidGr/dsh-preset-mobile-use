@@ -260,7 +260,7 @@ export function apply(ctx) {
 					"- 'observe': Inspect current screen state.\n" +
 					"- 'click': Tap at coordinate [x, y] or node target ID.\n" +
 					"- 'swipe': Drag from coordinate [x, y] to end_coordinate [x2, y2].\n" +
-					"- 'set_value': Set text of specified target node.\n" +
+					"- 'set_value': Set text of specified target node or focused field.\n" +
 					"- 'key': Press key like 'BACK', 'HOME', 'ENTER', or key combination.\n" +
 					"- 'wait': Pause execution for duration_ms to let UI settle.\n" +
 					"- 'launch_app': Launch app by package name or 'package/activity'.\n" +
@@ -279,7 +279,7 @@ export function apply(ctx) {
 			},
 			target: {
 				type: "string",
-				description: "Accessibility node ID from UI dump tree (e.g. '146') for 'click' or 'set_value'.",
+				description: "Accessibility node ID from UI dump tree (e.g. '146') for 'click' or 'set_value'. Omit for focused field.",
 			},
 			text: {
 				type: "string",
@@ -349,9 +349,6 @@ export function apply(ctx) {
 						const knownActions = new Set(["observe", "click", "swipe", "set_value", "key", "wait", "launch_app"]);
 						if (!knownActions.has(args.action)) {
 							return { message: `Error: unknown action '${args.action}'. Supported: observe, click, swipe, set_value, key, wait, launch_app, list_apps, switch_mode.` };
-						}
-						if (args.action === "set_value" && !args.target) {
-							return { message: "Error: action 'set_value' requires target node ID." };
 						}
 						try {
 							const res = await postJson("/api/action", args);
