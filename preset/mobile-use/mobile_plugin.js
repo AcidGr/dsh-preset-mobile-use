@@ -110,7 +110,7 @@ const MOBILE_AGENT_GUIDANCE = `<mobile_agent_guidance>
 ## Android Mobile Use Operational Rules & Protocols
 
 ### 1. Closed-Loop Verification
-- Every physical action (\`click\`, \`swipe\`, \`type\`, \`key\`, \`launch_app\`) automatically captures and returns the updated accessibility tree. Pass \`screenshot=true\` to attach an image.
+- Every physical action (\`click\`, \`swipe\`, \`set_value\`, \`key\`, \`launch_app\`) automatically captures and returns the updated accessibility tree. Pass \`screenshot=true\` to attach an image.
 - Never perform blind consecutive actions without verifying the updated state. After each action, inspect the returned UI tree or image to confirm the intended transition (e.g., page navigated, dialog dismissed, field populated) before deciding your next step.
 
 ### 2. Grounding Priority: Element Target vs. Coordinates
@@ -296,7 +296,8 @@ export function apply(ctx) {
 			},
 			screenshot: {
 				type: "boolean",
-				description: "Whether to attach a visual screenshot image alongside the accessibility tree (default: false).",
+				description:
+					"The accessibility tree is always returned. Set true to also attach a screenshot (e.g. 'click') only when the tree cannot complete the task. Defaults to false.",
 			},
 		},
 		output: {
