@@ -66,26 +66,30 @@ function resolveOptionalDependency(name) {
 
 const sharp = resolveOptionalDependency("sharp");
 
-const MAX_DELIVERED_LONG_EDGE = 1302;
-const DELIVERED_JPEG_QUALITY = 92;
+const DELIVERED_JPEG_QUALITY = 88;
 
-/** Drop trailing zeros so a stated factor reads as `3` rather than `3.0000`. */
+/** Token count of one grid (14px patch, 3:1 downsample -> 42px cell; row separator + 2 framing tokens). */
+function gridTokens(width, height) {
+	const gw = Math.ceil(width / 42);
+	const gh = Math.ceil(height / 42);
+	return gh * (gw + 1) + 2;
+}
+
+/** Drop trailing zeros so a stated factor reads as `2` rather than `2.0000`. */
 function factorText(value) {
 	return String(Number(value.toFixed(4)));
 }
 
 function planScreenshotDelivery(width, height) {
-	const longEdge = Math.max(width, height);
 	let divisor = 1;
-	while (longEdge / divisor > MAX_DELIVERED_LONG_EDGE) divisor += 1;
-	// One scale for both axes: derive the width from the divisor, then derive the height
-	// from that same scale instead of rounding it independently. Independent rounding is
-	// what made scaleX and scaleY differ by ~0.001, forcing the model to carry two
-	// multipliers where a single one is exact.
+	while (gridTokens(width / divisor, height / divisor) > 1024) {
+		divisor += 1;
+	}
 	const outW = Math.max(1, Math.round(width / divisor));
-	const scale = width / outW;
-	const outH = Math.max(1, Math.round(height / scale));
-	return { divisor, width: outW, height: outH, scaleX: scale, scaleY: scale };
+	const outH = Math.max(1, Math.round(height / divisor));
+	const scaleX = width / outW;
+	const scaleY = height / outH;
+	return { divisor, width: outW, height: outH, scaleX, scaleY };
 }
 
 function screenshotScaleText(delivery) {
