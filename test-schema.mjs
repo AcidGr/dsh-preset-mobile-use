@@ -29,13 +29,14 @@ assert.deepStrictEqual(props.action.enum, [
 	"observe",
 	"click",
 	"swipe",
-	"type",
+	"set_value",
 	"key",
 	"wait",
 	"launch_app",
 	"list_apps",
 	"switch_mode",
 ]);
+assert(!props.action.enum.includes("type"), "type must not be in action enum");
 assert(!props.action.enum.includes("status"), "status must not be in action enum");
 for (const act of props.action.enum) {
 	assert(props.action.description.includes(`'${act}'`), `action.description must include '${act}'`);
