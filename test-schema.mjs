@@ -50,11 +50,12 @@ assert.strictEqual(props.x2, undefined, "x2 should be removed");
 assert.strictEqual(props.y2, undefined, "y2 should be removed");
 assert.strictEqual(props.activity, undefined, "activity should be removed");
 
-// 3. Verify mode & target_mode
-assert.deepStrictEqual(props.mode.enum, ["tree", "visual"]);
-assert.deepStrictEqual(props.target_mode.enum, ["foreground", "background", "idle"]);
+// 3. Verify mode & screenshot
+assert.deepStrictEqual(props.mode.enum, ["foreground", "background", "idle"]);
+assert.strictEqual(props.screenshot.type, "boolean");
+assert.strictEqual(props.target_mode, undefined, "target_mode should be replaced by mode");
 
-// 4. Verify parameter count: action, coordinate, end_coordinate, target, text, duration_ms, mode, target_mode = 8
+// 4. Verify parameter count: action, coordinate, end_coordinate, target, text, duration_ms, mode, screenshot = 8
 assert.strictEqual(Object.keys(props).length, 8);
 
 // 5. Verify mobile description
