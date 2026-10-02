@@ -503,19 +503,7 @@ export function apply(ctx) {
 	ctx.on("session/event", (session, event) => {
 		try {
 			const sid = session?.id || session?.meta?.id || "";
-			if (event?.type === "user/message") {
-				const title = resolveSessionTitle(session);
-				if (sid) {
-					runningSessionIds.add(sid);
-					ensureSessionWatch(sid, title);
-				}
-				postJson("/api/task_event", {
-					type: "agent_status",
-					status: "running",
-					session_id: sid,
-					session_title: title,
-				}).catch(() => {});
-			} else if (event?.type === "session/title") {
+			if (event?.type === "session/title") {
 				const newTitle = event?.data?.title;
 				if (sid && newTitle) {
 					sessionTitleBySession.set(sid, newTitle);
