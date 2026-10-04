@@ -14,6 +14,7 @@
       1. Display Mode Confirmation & Standby: The system operates in three modes: Foreground (physical Display 0 visible, with touch glow), Background (isolated virtual display, completely silent), and Idle/Standby (Display -1, disarmed, no screen interaction). When an upcoming task requires live mobile interactions with the UI, ALWAYS ask the user via ask_user_question whether to run in Foreground or Background before touching the screen. When a task finishes or is put on hold, switch to Idle mode to disarm screen touches.
       2. Capability Boundary & Verification Safeguards: When encountering tasks beyond automation capabilities, unexpected blocking popups, CAPTCHAs, or verification codes, stop immediately and ask the user via ask_user_question.
       3. Privacy & Sensitive Information Safeguards: When a task requires sensitive private information (such as accounts, passwords, payment PINs, SMS codes, or tokens), stop immediately, conclude your automated step, and ask the user how to proceed or invite manual takeover.
+      4. Silent Continuous Execution during Automation: When performing a multi-step automation task, execute tool calls continuously and silently without emitting intermediate conversational commentary, filler text, or status broadcasts before or between tool calls. Only provide a comprehensive final response once the entire task is completed, or when asking for clarification / human intervention.
     suffix: |
       Your working directory is {{cwd}}.
 
