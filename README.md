@@ -7,13 +7,13 @@
 <a name="中文说明"></a>
 ## 中文说明
 
-`dsh-preset-mobile-use` 是专为 **DeepSeek Harness (DSH)** 深度定制的移动端自动化 Agent 预设（Preset）。
+`dsh-preset-mobile-use` 是供 **DeepSeek Harness (DSH)** 使用的 Mobile Use 预设（Preset）。
 
-该预设使 DSH 具备原生的 **Android Mobile Use** 自主行动能力，直接通过大语言模型自主规划、视觉推理与精细物理交互，在后台静默完成 Android 系统的各项高阶自动化任务。
+安装后，DSH 中的 Agent 可以直接操作 Android 手机上的应用：查看屏幕、点击、滑动、输入文字、切换前后台。
 
 ---
 
-### 实测实录：纯手绘作画实机效果展示（含金量极高）
+### 实测记录：用系统画笔手绘一幅画
 
 📺 **B站高清实机演示视频**：[https://www.bilibili.com/video/BV1WYeS6YEwt](https://www.bilibili.com/video/BV1WYeS6YEwt)
 
@@ -93,9 +93,9 @@ Agent 自动在后台独立副屏中拉起系统便签、选择系统画笔、�
 <a name="english"></a>
 ## English Description
 
-`dsh-preset-mobile-use` is a specialized autonomous Mobile Use Agent Preset authored for **DeepSeek Harness (DSH)**.
+`dsh-preset-mobile-use` is the Mobile Use preset for **DeepSeek Harness (DSH)**.
 
-It empowers the DSH Agent with native, background-headless **Android Mobile Use** capabilities, enabling vision-based planning, UI hierarchy parsing, fine motor gesture control, and silent multi-step execution.
+Once installed, the DSH agent can operate apps on an Android phone directly: read the screen, tap, swipe, type text, and switch between foreground and background.
 
 ---
 
