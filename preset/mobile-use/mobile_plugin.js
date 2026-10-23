@@ -110,7 +110,7 @@ const MOBILE_AGENT_GUIDANCE = `<mobile_agent_guidance>
 ## Android Mobile Use Operational Rules & Protocols
 
 ### 1. Closed-Loop Verification
-- Every physical action (\`click\`, \`swipe\`, \`set_value\`, \`key\`, \`launch_app\`) automatically captures and returns the updated accessibility tree. Pass \`screenshot=true\` to attach an image.
+- Every physical action (\`click\`, \`swipe\`, \`set_value\`, \`type\`, \`key\`, \`launch_app\`) automatically captures and returns the updated accessibility tree. Pass \`screenshot=true\` to attach an image.
 - Never perform blind consecutive actions without verifying the updated state. After each action, inspect the returned UI tree or image to confirm the intended transition (e.g., page navigated, dialog dismissed, field populated) before deciding your next step.
 
 ### 2. Grounding Priority: Element Target vs. Coordinates
@@ -131,8 +131,9 @@ const MOBILE_AGENT_GUIDANCE = `<mobile_agent_guidance>
 - All mobile UI perception and physical interactions must be performed strictly through the \`mobile\` tool.
 - Do NOT bypass this interface by executing shell workarounds (e.g., \`adb shell input tap\`, \`am start\`, \`screencap\`, \`sendevent\`, or raw scripts via \`bash\`) unless explicitly requested by the user.
 
-### 5. Headless Input & System Navigation
-- Headless Text Injection: For editable fields, use \`action='set_value', target='<id>', text='...'\`. Text is directly injected into the target element via accessibility services with immediate read-back verification.
+### 5. Text Input & System Navigation
+- Headless Text Injection: For standard editable fields, use \`action='set_value', target='<id>', text='...'\`. Text is directly set on the element via accessibility services with immediate read-back verification.
+- Keyboard Typing Stream: For web rich-text editors (contenteditable, React/Vue inputs, code editors) or when set_value does not activate submit buttons, use \`action='type', text='...'\` (with optional \`target='<id>'\` or \`coordinate=[x, y]\`). This sends a real paste/typing input stream, triggers reactive state listeners, and unlocks action buttons.
 - Essential System Keys:
   * \`action='key', text='BACK'\`: Navigate back, dismiss overlays, popups, or soft keyboards.
   * \`action='key', text='HOME'\`: Return to the system launcher/desktop.
@@ -253,6 +254,7 @@ export function apply(ctx) {
 					"click",
 					"swipe",
 					"set_value",
+					"type",
 					"key",
 					"wait",
 					"launch_app",
@@ -264,7 +266,8 @@ export function apply(ctx) {
 					"- 'observe': Inspect current screen state.\n" +
 					"- 'click': Tap at coordinate [x, y] or node target ID.\n" +
 					"- 'swipe': Drag from coordinate [x, y] to end_coordinate [x2, y2].\n" +
-					"- 'set_value': Set text of specified target node or focused field.\n" +
+					"- 'set_value': Set text of specified target node or focused field directly via accessibility.\n" +
+					"- 'type': Type text into focused field or specified target/coordinate via physical paste/typing event stream.\n" +
 					"- 'key': Press key like 'BACK', 'HOME', 'ENTER', or key combination.\n" +
 					"- 'wait': Pause execution for duration_ms to let UI settle.\n" +
 					"- 'launch_app': Launch app by package name or 'package/activity'.\n" +
@@ -274,7 +277,7 @@ export function apply(ctx) {
 			coordinate: {
 				type: "array",
 				items: { type: "integer" },
-				description: "Target [x, y] coordinates in display pixels (tap position for 'click', start position for 'swipe').",
+				description: "Target [x, y] coordinates in display pixels (tap position for 'click', start position for 'swipe', or focus position for 'type').",
 			},
 			end_coordinate: {
 				type: "array",
@@ -283,11 +286,11 @@ export function apply(ctx) {
 			},
 			target: {
 				type: "string",
-				description: "Accessibility node ID from UI dump tree (e.g. '146') for 'click' or 'set_value'. Omit for focused field.",
+				description: "Accessibility node ID from UI dump tree (e.g. '146') for 'click', 'set_value', or 'type'. Omit for focused field.",
 			},
 			text: {
 				type: "string",
-				description: "Text value ('set_value'), key name ('key'), package name ('launch_app'), or search query ('list_apps').",
+				description: "Text value ('set_value', 'type'), key name ('key'), package name ('launch_app'), or search query ('list_apps').",
 			},
 			duration_ms: {
 				type: "integer",
@@ -351,14 +354,16 @@ export function apply(ctx) {
 					}
 
 					default: {
-						const knownActions = new Set(["observe", "click", "swipe", "set_value", "key", "wait", "launch_app"]);
+						const knownActions = new Set(["observe", "click", "swipe", "set_value", "type", "key", "wait", "launch_app"]);
 						if (!knownActions.has(args.action)) {
-							return { message: `Error: unknown action '${args.action}'. Supported: observe, click, swipe, set_value, key, wait, launch_app, list_apps, switch_mode.` };
+							return { message: `Error: unknown action '${args.action}'. Supported: observe, click, swipe, set_value, type, key, wait, launch_app, list_apps, switch_mode.` };
 						}
 						try {
 							const res = await postJson("/api/action", args);
 							if (!res.success) {
-								return { message: `Action '${args.action}' failed: ${res.message || "unknown error"}` };
+								const failParts = [`Action '${args.action}' failed: ${res.message || "unknown error"}`];
+								if (res.data) failParts.push(res.data);
+								return { message: failParts.join("\n\n") };
 							}
 							if (args.screenshot === true) {
 								const shot = await captureScreenshotAttachment(ctx);
