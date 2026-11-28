@@ -2,6 +2,10 @@
 
 [English](#english) | [中文说明](#中文说明)
 
+> 🚀 **更推荐的通用 MCP 方案：[Mobile Use MCP Sandbox (`mobile-use-mcp`)](https://github.com/AcidGr/mobile-use-mcp)**
+> - 如果你希望获得更纯粹的虚拟副屏隔离架构、60fps 沉浸式全屏人工接管、横竖屏自动翻转与跨 ROM 兼容性，或希望同时在 **Claude Code、Antigravity、Codex、Cursor、Windsurf、Cherry Studio、DSH** 等任意支持 MCP 的客户端中通用操控手机，**推荐直接使用全新的 [mobile-use-mcp](https://github.com/AcidGr/mobile-use-mcp)**。
+> - Looking for a cleaner, universal **MCP (Model Context Protocol)** Android Virtual Display sandbox that works across Claude Code, Antigravity, Codex, Cursor, Windsurf, Cherry Studio, and DSH with 60fps Human-in-the-Loop takeover and cross-ROM support? Check out **[mobile-use-mcp](https://github.com/AcidGr/mobile-use-mcp)**!
+
 ---
 
 <a name="中文说明"></a>
@@ -92,6 +96,9 @@ Agent 自动在后台独立副屏中拉起系统便签、选择系统画笔、�
 
 <a name="english"></a>
 ## English Description
+
+> 🚀 **Recommended Universal MCP Edition: [Mobile Use MCP Sandbox (`mobile-use-mcp`)](https://github.com/AcidGr/mobile-use-mcp)**  
+> We also provide **[mobile-use-mcp](https://github.com/AcidGr/mobile-use-mcp)** — a cleaner, self-contained Android Virtual Display MCP server supporting Streamable HTTP & Stdio across Claude Code, Antigravity, Codex, Cursor, Windsurf, Cherry Studio, and DSH, featuring 60fps real-time human takeover, auto orientation, and cross-ROM compatibility.
 
 `dsh-preset-mobile-use` is the Mobile Use preset for **DeepSeek Harness (DSH)**.
 
